@@ -56,6 +56,8 @@ body{height:100dvh;overflow:hidden}
 .btn-big{width:100%;font-size:19px;padding:18px}
 .btn-file{width:100%}
 .btn-row{display:flex;gap:10px;margin:10px 0}
+.btn-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.btn-grid .btn{margin:0;min-width:0;flex:none;padding:10px 12px;font-size:14px}
 .btn-row.wrap{flex-wrap:wrap}
 .btn-row .btn{flex:1;min-width:120px}
 .fileinput{position:absolute;width:1px;height:1px;opacity:0}

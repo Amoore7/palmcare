@@ -1,5 +1,6 @@
 (function(){
   const $=id=>document.getElementById(id);
+  const {toast}=window.FlowUtil||{};
 
   async function collect(farmId){
     const farm=await DB.farm(farmId);
@@ -171,5 +172,95 @@
     ExcelUtil.downloadBlob(blob,name);
   }
 
-  window.Reports={collect,computeStats,whatsappText,shareWhatsApp,exportFarmExcel,exportAllVisitsExcel,renderPrint,downloadTextFile};
+  // ---------- CSV export ----------
+  function csvEscape(s){ const t=String(s==null?'':s); return /[",\r\n]/.test(t)?('"'+t.replace(/"/g,'""')+'"'):t; }
+  function toCSV(headers, rows){
+    const L=[headers.map(csvEscape).join(',')];
+    rows.forEach(r=>L.push(r.map(csvEscape).join(',')));
+    return '\uFEFF'+L.join('\r\n');
+  }
+  function downloadCSV(name, headers, rows){
+    const blob=new Blob([toCSV(headers,rows)],{type:'text/csv;charset=utf-8'});
+    ExcelUtil.downloadBlob(blob,name);
+  }
+
+  async function weeklySummary(){
+    const visits=await DB.recentVisits();
+    const farmIds=new Set((await DB.farms()).map(f=>f.id));
+    const counts={};
+    visits.forEach(v=>{
+      const k=Geo.dayStart(v.date);
+      const c=counts[k]||(counts[k]={visits:0,phosphide:0,fibrolMl:0,obstacles:0,farms:new Set()});
+      c.visits++;
+      if(farmIds.has(v.farmId)) c.farms.add(v.farmId);
+      const ft=v.fTreatment;
+      if(ft&&ft.treatedPalms) c.phosphide+=ft.treatedPalms*(ft.phosphidePerPalm||0);
+      if(ft&&ft.fibrolMl!=null) c.fibrolMl+=ft.fibrolMl;
+      if(v.obstacles&&v.obstacles.length) c.obstacles++;
+    });
+    const visited=new Set(visits.map(v=>v.farmId));
+    const rows=Object.keys(counts).map(k=>{
+      const c=counts[k];
+      return {week:parseInt(k,10),farms:c.farms.size,visits:c.visits,phosphide:c.phosphide,fibrolMl:c.fibrolMl,obstacles:c.obstacles};
+    }).sort((a,b)=>a.week-b.week).slice(-8);
+    return {rows,totalFarms:visited.size,totalVisits:visits.length};
+  }
+  function csvHeaders(){ return [I18N.t('weekCol'),I18N.t('farmsCol'),I18N.t('visitsCol'),I18N.t('phosphideCol'),I18N.t('fibrolMlCol'),I18N.t('obstaclesCol')]; }
+  function noData(){ const n=I18N.t('reportNoData'); if(toast) toast(n); return false; }
+
+  async function downloadWeekly(){
+    const {rows}=await weeklySummary();
+    if(!rows.length) return noData();
+    downloadCSV('palmcare-weekly-'+Date.now()+'.csv', csvHeaders(), rows.map(r=>[Geo.fmtDate(r.week),r.farms,r.visits,r.phosphide,r.fibrolMl,r.obstacles]));
+    toast(I18N.t('reportDownloaded'));
+  }
+  async function downloadTreatments(){
+    const palms=await DB.palms();
+    if(!palms.length) return noData();
+    const fmap=new Map((await DB.farms()).map(f=>[f.id,f.name||'']));
+    downloadCSV('palmcare-treatments-'+Date.now()+'.csv',
+      [I18N.t('date'),I18N.t('farmer'),I18N.t('palmCode'),I18N.t('severity'),I18N.t('pesticide'),I18N.t('dosage'),I18N.t('nextInspection'),I18N.t('followUpResult')],
+      palms.map(p=>[Geo.fmtDate(p.treatmentDate),fmap.get(p.farmId)||'',p.code||'',p.severity||'',p.pesticide||'',p.dosage||'',Geo.fmtDate(p.nextInspectionDate),p.result||'']));
+    toast(I18N.t('reportDownloaded'));
+  }
+  async function downloadArchived(){
+    const rows=(await DB.farms()).filter(f=>f.archived);
+    if(!rows.length) return noData();
+    downloadCSV('palmcare-archived-'+Date.now()+'.csv',
+      [I18N.t('palmCode'),I18N.t('farmer'),I18N.t('phone'),I18N.t('registeredCount'),I18N.t('archiveNote'),I18N.t('date')],
+      rows.map(f=>[f.code||'',f.name,f.phone||'',f.registeredCount||0,f.archiveNote||'',Geo.fmtDate(f.archivedAt)]));
+    toast(I18N.t('reportDownloaded'));
+  }
+  async function downloadFarmsCsv(){
+    const rows=await DB.farms();
+    if(!rows.length) return noData();
+    downloadCSV('palmcare-farms-'+Date.now()+'.csv',
+      ['#',I18N.t('farmer'),I18N.t('phone'),I18N.t('registeredCount'),I18N.t('archived'),I18N.t('date')],
+      rows.map(f=>[f.code||'',f.name,f.phone||'',f.registeredCount||0,(f.archived?'yes':'no'),Geo.fmtDate(f.createdAt)]));
+    toast(I18N.t('reportDownloaded'));
+  }
+  async function downloadVisitsCsv(){
+    const visits=await DB.recentVisits();
+    if(!visits.length) return noData();
+    const fmap=new Map((await DB.farms()).map(f=>[f.id,f.name||'']));
+    downloadCSV('palmcare-visits-'+Date.now()+'.csv',
+      [I18N.t('date'),I18N.t('farmer'),I18N.t('registeredCount'),I18N.t('actualCount'),I18N.t('phosphideCol'),I18N.t('fibrolMlCol'),I18N.t('obstacles')],
+      visits.map(v=>{ const ft=v.fTreatment||{}; return [
+        Geo.fmtDate(v.date),fmap.get(v.farmId)||'',v.registeredCount||0,v.actualCount!=null?v.actualCount:'',
+        ft.treatedPalms?ft.treatedPalms*(ft.phosphidePerPalm||0):'',ft.fibrolMl!=null?ft.fibrolMl:'',
+        (v.obstacles&&v.obstacles.length)?v.obstacles.join(' | '):'']; }));
+    toast(I18N.t('reportDownloaded'));
+  }
+  async function downloadPalmsCsv(){
+    const palms=await DB.palms();
+    if(!palms.length) return noData();
+    const fmap=new Map((await DB.farms()).map(f=>[f.id,f.name||'']));
+    downloadCSV('palmcare-palms-'+Date.now()+'.csv',
+      [I18N.t('date'),I18N.t('farmer'),I18N.t('palmCode'),I18N.t('severity'),I18N.t('pesticide'),I18N.t('dosage'),I18N.t('followUpResult'),I18N.t('nextInspection')],
+      palms.map(p=>[Geo.fmtDate(p.createdAt||p.treatmentDate),fmap.get(p.farmId)||'',p.code||'',p.severity||'',p.pesticide||'',p.dosage||'',p.result||'',Geo.fmtDate(p.nextInspectionDate)]));
+    toast(I18N.t('reportDownloaded'));
+  }
+
+  window.Reports={collect,computeStats,whatsappText,shareWhatsApp,exportFarmExcel,exportAllVisitsExcel,renderPrint,downloadTextFile,toCSV,weeklySummary,
+    downloadWeekly,downloadTreatments,downloadArchived,downloadFarmsCsv,downloadVisitsCsv,downloadPalmsCsv};
 })();

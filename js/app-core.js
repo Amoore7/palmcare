@@ -358,6 +358,6 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.2'};
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.3'};
   document.addEventListener('DOMContentLoaded',init);
 })();

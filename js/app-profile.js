@@ -296,6 +296,14 @@
         el('div',{class:'chip chip-yellow'},[el('b',{},[s.discFarms]),el('span',{},[I18N.t('discrepancyNote')])]),
         el('div',{class:'chip chip-yellow'},[el('b',{},[s.obstacleFarms]),el('span',{},[I18N.t('obstacles')])])
       ]));
+      detail.appendChild(el('h4',{},[I18N.t('weeklyTitle')]));
+      const dl=[['btn-primary',()=>Reports.downloadWeekly(),I18N.t('exportWeekly')],
+        ['',()=>Reports.downloadTreatments(),I18N.t('exportTreatments')],
+        ['',()=>Reports.downloadArchived(),I18N.t('exportArchived')],
+        ['',()=>Reports.downloadFarmsCsv(),I18N.t('exportFarms')],
+        ['',()=>Reports.downloadVisitsCsv(),I18N.t('exportVisits')],
+        ['',()=>Reports.downloadPalmsCsv(),I18N.t('exportPalms')]];
+      detail.appendChild(el('div',{class:'btn-grid'},dl.map(b=>el('button',{class:'btn '+b[0],onClick:b[1]},[b[2]]))));
     }
   };
   function shortWeek(ts){ const d=new Date(ts); return d.toLocaleDateString(I18N.get()==='ar'?'ar-SA':'en-GB',{day:'numeric',month:'short'}); }
