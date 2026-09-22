@@ -1,0 +1,237 @@
+(function(){
+  const $=id=>document.getElementById(String(id).replace(/^#/,''));
+  const {h,el}=window.Util;
+  const {toast}=window.FlowUtil;
+
+  let current='home';
+  let currentFarmId=null;
+
+  // ---------- router ----------
+  function goto(view, farmId){
+    current=view;
+    currentFarmId=farmId||null;
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    $('#view-'+view).classList.add('active');
+    document.querySelectorAll('.navitem').forEach(n=>{
+      n.classList.toggle('active', n.dataset.nav===view);
+    });
+    $('#view-'+view).scrollTop=0;
+    if(view==='home') App.Home.render();
+    else if(view==='farms') App.Farms.render();
+    else if(view==='map') App.AreaMap.render();
+    else if(view==='stats') App.Stats.render();
+    else if(view==='farm') App.Profile.render(farmId);
+  }
+
+  function refreshAll(){
+    if(current==='home') App.Home.render();
+    else if(current==='farms') App.Farms.render();
+    else if(current==='map') App.AreaMap.render();
+    else if(current==='stats') App.Stats.render();
+    else if(current==='farm') App.Profile.render(currentFarmId);
+  }
+
+  function applyI18n(){
+    I18N.set(lang());
+    document.querySelectorAll('[data-i18n]').forEach(n=>{
+      const k=n.getAttribute('data-i18n');
+      n.textContent=I18N.t(k);
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(n=>{
+      n.setAttribute('placeholder',I18N.t(n.getAttribute('data-i18n-ph')));
+    });
+  }
+  function lang(){ return localStorage.getItem('palmcare.lang')||'ar'; }
+
+  // ---------- HOME ----------
+  const Home={
+    async render(){
+      const palms=await DB.palms();
+      const pending=palms.filter(p=>p.nextInspectionDate && !p.result && p.nextInspectionDate < Date.now()+4*86400000);
+      const cls=pending.reduce((a,p)=>{ const c=Geo.dueClass(p.nextInspectionDate); a[c]=(a[c]||0)+1; return a; },{});
+      const farms=await DB.farms();
+      const fm=new Map(farms.map(f=>[f.id,f]));
+      $('#home-summary').innerHTML=
+        '<div class="chip chip-red"><b>'+(cls.red||0)+'</b><span>'+I18N.t('overdueCount')+'</span></div>'+
+        '<div class="chip chip-yellow"><b>'+(cls.yellow||0)+'</b><span>'+I18N.t('dueSoon')+'</span></div>'+
+        '<div class="chip chip-green"><b>'+(cls.green||0)+'</b><span>'+I18N.t('upcoming')+'</span></div>'+
+        '<div class="chip"><b>'+farms.length+'</b><span>'+I18N.t('farmsTotal')+'</span></div>'+
+        $('#net-status').outerHTML;
+
+      const list=$('#today-list');
+      list.innerHTML='';
+      if(!pending.length){ $('#today-empty').hidden=false; }
+      else{
+        $('#today-empty').hidden=true;
+        const byCls={red:I18N.t('urgent'),yellow:I18N.t('dueToday'),green:I18N.t('dueSoonLabel')};
+        ['red','yellow','green'].forEach(c=>{
+          const arr=pending.filter(p=>Geo.dueClass(p.nextInspectionDate)===c).sort((a,b)=>a.nextInspectionDate-b.nextInspectionDate);
+          if(!arr.length) return;
+          list.appendChild(el('h4',{class:'section-title'},[byCls[c]+' ('+arr.length+')']));
+          arr.slice(0,12).forEach(p=>{
+            const f=fm.get(p.farmId)||{name:'—'};
+            const dIso=new Date(p.nextInspectionDate).toISOString().slice(0,10);
+            const card=el('div',{class:'farm-card',style:'border-right-color:'+(c==='red'?'#d64541':c==='yellow'?'#e8a33d':'#228b54')},[
+              el('div',{class:'info'},[
+                el('h4',{},[f.name+' · '+p.code]),
+                el('div',{class:'sub'},[I18N.t('nextInspection')+': '+Geo.fmtDate(p.nextInspectionDate)+(Geo.dayStart(p.nextInspectionDate)<Geo.todayStart()?(' ('+Math.round((Geo.todayStart()-Geo.dayStart(p.nextInspectionDate))/86400000)+'d) '):'')])
+              ]),
+              el('span',{class:'due '+c},[dIso]),
+              el('button',{class:'btn btn-primary',style:'min-height:44px;padding:10px 14px',onclick:()=>Flow.Palm.open(p.farmId,p,null,{title:I18N.t('followUpTitle')})},[I18N.t('inspection')+' ✅'])
+            ]);
+            list.appendChild(card);
+          });
+        });
+      }
+    }
+  };
+
+  // ---------- FARMS LIST ----------
+  const Farms={
+    async render(){
+      const farms=await DB.farms();
+      const q=($('#farm-search').value||'').toLowerCase();
+      const list=$('#farms-list');
+      list.innerHTML='';
+      const last=await DB.getSetting('lastKnownLocation',null);
+      const overdue=new Set();
+      const pending=await DB.palmsPendingInspection();
+      pending.forEach(p=>{ if(Geo.dueClass(p.nextInspectionDate)==='red') overdue.add(p.farmId); });
+      farms.filter(f=>!q||(f.name||'').toLowerCase().includes(q)||String(f.nationalId||'').includes(q)||String(f.phone||'').replace(/\s/g,'').includes(q.replace(/\s/g,'')))
+        .forEach(f=>{
+          const pendingC=pending.filter(p=>p.farmId===f.id && !p.result).length;
+          const idFarms=pending.filter(p=>p.farmId===f.id && !p.result);
+          const badgeColor=overdue.has(f.id)?'red':pendingC?'yellow':'green';
+          const badgeTxt=overdue.has(f.id)?I18N.t('badgeOverdue'):pendingC?I18N.t('badgePending'):I18N.t('badgeClear');
+          let d='';
+          if(last && f.lat!=null){
+            const dm=Geo.distM(last,f);
+            if(dm!=null) d=Geo.fmtDist(dm);
+          }
+          const card=el('div',{class:'farm-card',onclick:()=>goto('farm',f.id)},[
+            el('div',{class:'info'},[
+              el('h4',{},[f.name||'—']),
+              el('div',{class:'sub'},[
+                ((f.nationalId)?('ID:'+f.nationalId+' · '):'')+((f.phone)?('📞'+f.phone):'')+
+                ((f.registeredCount)?(' · 🌴 '+f.registeredCount):'')+((d)?(' · 📍'+d):'')+
+                ((Array.isArray(f.flags)&&f.flags.length)?(' · ⚠️ '+f.flags.join(',')):'')
+              ])
+            ]),
+            el('span',{class:'due '+badgeColor},[badgeTxt+(pendingC?(' '+pendingC):'')])
+          ]);
+          list.appendChild(card);
+        });
+      $('#farms-empty').hidden=farms.length>0;
+    }
+  };
+
+  // ---------- init ----------
+  async function init(){
+    applyI18n();
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>reg.update().catch(()=>{})).catch(()=>{});
+    }
+
+    // bind nav
+    document.querySelectorAll('.navitem').forEach(n=>n.addEventListener('click',()=>goto(n.dataset.nav)));
+    document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>goto(b.dataset.back)));
+    $('btn-new-visit').addEventListener('click',()=>Flow.openVisit(null));
+    $('btn-import').addEventListener('click',()=>App.Import.openPicker());
+
+    // farm profile buttons
+    $('btn-farm-visit').addEventListener('click',()=>{ if(currentFarmId) Flow.openVisit(currentFarmId); });
+    $('btn-boundary').addEventListener('click',()=>{ if(currentFarmId) Flow.Boundary.open(currentFarmId,'boundary'); });
+    $('btn-del-boundary').addEventListener('click',async()=>{
+      const f=await DB.farm(currentFarmId);
+      if(!f||!f.boundary) return;
+      const ok=await window.FlowUtil.confirm(I18N.t('delBoundaryConfirm'));
+      if(!ok) return;
+      f.boundary=null;
+      await DB.saveFarm(f);
+      toast(I18N.t('delBoundaryDone'));
+      refreshAll();
+    });
+    $('btn-obstacle').addEventListener('click',()=>{ if(currentFarmId) Flow.Boundary.open(currentFarmId,'obstacle'); });
+    $('btn-report-pdf').addEventListener('click',()=>{ if(currentFarmId) Reports.renderPrint(currentFarmId); });
+    $('btn-report-xlsx').addEventListener('click',()=>{ if(currentFarmId) Reports.exportFarmExcel(currentFarmId); });
+    $('btn-whatsapp').addEventListener('click',()=>{ if(currentFarmId) Reports.shareWhatsApp(currentFarmId); });
+
+    // settings
+    $('btn-settings').addEventListener('click',()=>App.Settings.open());
+    document.querySelectorAll('.overlay .close,[data-close]').forEach(b=>{
+      b.addEventListener('click',()=>{ const ov=b.closest('.overlay'); if(ov) ov.hidden=true; });
+    });
+
+    // install prompt
+    let deferredPrompt=null;
+    window.addEventListener('beforeinstallprompt',e=>{
+      e.preventDefault();
+      deferredPrompt=e;
+      const b=$('btn-install-app'); if(b) b.hidden=false;
+      const hint=$('install-hint'); if(hint) hint.hidden=false;
+    });
+    const instBtn=$('btn-install-app');
+    if(instBtn) instBtn.addEventListener('click',async()=>{
+      if(!deferredPrompt){ toast(I18N.t('installHint')); return; }
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt=null;
+      instBtn.hidden=true;
+      $('install-hint').hidden=true;
+    });
+
+    for(const el of document.querySelectorAll('.overlay')){
+      el.addEventListener('click',e=>{ if(e.target===el && !el.classList.contains('full')) el.hidden=true; });
+    }
+
+    // search
+    $('#farm-search').addEventListener('input',()=>Farms.render());
+
+    // online/offline status bar
+    window.addEventListener('online',()=>setNet());
+    window.addEventListener('offline',()=>setNet());
+
+    $('#btn-sync-now').addEventListener('click',async()=>{
+      toast(I18N.t('syncNow')+'…');
+      const r=await Sync.syncNow();
+      toast(r==='ok'?I18N.t('synced'):(r==='offline'?I18N.t('networkOff'):r==='no-endpoint'?'no-endpoint':I18N.t('syncFail')));
+    });
+
+    // backup
+    $('#btn-export-backup').addEventListener('click',async()=>{
+      await Sync.exportBackupFile();
+      toast(I18N.t('backupExportDone'));
+    });
+    const bf=$('#backup-file');
+    bf.addEventListener('change',async()=>{
+      try{
+        await Sync.importBackupFile(bf.files[0]);
+        toast(I18N.t('backupImportDone'));
+        refreshAll();
+      }catch(e){ toast(I18N.t('syncFail')); }
+      bf.value='';
+    });
+    $('#btn-import-backup').addEventListener('click',()=>bf.click());
+
+    try{
+      await DB.init();
+      await App.Settings.loadValues();
+      refreshAll();
+    }catch(e){
+      toast(I18N.t('dbError'));
+    }
+    setNet();
+    try{ Notifier.audit(); }catch(e){}
+  }
+
+  function setNet(){
+    const n=navigator.onLine;
+    const bar=$('net-status');
+    bar.textContent=n?I18N.t('networkOn'):I18N.t('networkOff');
+    bar.className='chip '+(n?'chip-green':'chip-yellow');
+    bar.style.gridColumn='1 / -1';
+  }
+
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n};
+  document.addEventListener('DOMContentLoaded',init);
+})();

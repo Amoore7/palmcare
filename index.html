@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>PalmCare — سوسة النخيل</title>
+<meta name="description" content="تطبيق ميداني لإدارة علاج النخيل من سوسة النخيل الحمراء — يعمل بدون إنترنت">
+<meta name="theme-color" content="#228b54">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PalmCare">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section class="view active" id="view-home">
+    <header class="topbar">
+      <h1 id="home-title">PalmCare</h1>
+      <button class="iconbtn" id="btn-settings" aria-label="settings">⚙</button>
+    </header>
+
+    <div id="home-summary" class="summary-row"><div class="chip" id="net-status" style="grid-column:1/-1"></div></div>
+
+    <div class="big-actions">
+      <button class="btn btn-primary btn-big" id="btn-new-visit">＋ <span data-i18n="newVisit"></span></button>
+      <button class="btn btn-outline" id="btn-import">📥 <span data-i18n="importExcel"></span></button>
+    </div>
+
+    <h2 class="section-title" data-i18n="todayTitle"></h2>
+    <div id="today-list" class="card-list"></div>
+    <p id="today-empty" class="empty-msg muted" data-i18n="todayEmpty" hidden></p>
+  </section>
+
+  <!-- ============ FARMS LIST ============ -->
+  <section class="view" id="view-farms">
+    <header class="topbar topbar-back">
+      <button class="iconbtn back" data-back="home">‹</button>
+      <h1 data-i18n="farmsTitle"></h1>
+    </header>
+    <div class="searchbar">
+      <input type="search" id="farm-search" data-i18n-ph="searchFarms" autocomplete="off">
+    </div>
+    <div id="farms-list" class="card-list"></div>
+    <p id="farms-empty" class="empty-msg muted" data-i18n="farmsEmpty" hidden></p>
+  </section>
+
+  <!-- ============ FARM PROFILE ============ -->
+  <section class="view" id="view-farm">
+    <header class="topbar topbar-back">
+      <button class="iconbtn back" data-back="farms">‹</button>
+      <h1 id="farm-title"></h1>
+    </header>
+
+    <div id="farm-info" class="card"></div>
+
+    <div class="btn-row wrap">
+      <button class="btn btn-primary" id="btn-farm-visit">＋ <span data-i18n="newVisit"></span></button>
+      <button class="btn btn-outline" id="btn-boundary" data-i18n="drawBoundary"></button>
+      <button class="btn btn-outline" id="btn-del-boundary" data-i18n="delBoundary" hidden></button>
+      <button class="btn btn-outline" id="btn-obstacle" data-i18n="addObstacle"></button>
+    </div>
+
+    <div class="map-wrap">
+      <canvas id="farm-map"></canvas>
+      <div class="map-badge" id="farm-map-badge"></div>
+    </div>
+
+    <h2 class="section-title" data-i18n="palmsTitle"></h2>
+    <div id="farm-palms" class="card-list"></div>
+
+    <h2 class="section-title" data-i18n="visitsTitle"></h2>
+    <div id="farm-visits" class="card-list"></div>
+
+    <div class="btn-row wrap" style="margin-top:14px">
+      <button class="btn btn-outline" id="btn-report-pdf">📄 <span data-i18n="reportPdf"></span></button>
+      <button class="btn btn-outline" id="btn-report-xlsx">📊 <span data-i18n="reportExcel"></span></button>
+      <button class="btn btn-outline" id="btn-whatsapp">💬 <span data-i18n="shareWhatsApp"></span></button>
+    </div>
+  </section>
+
+  <!-- ============ AREA MAP ============ -->
+  <section class="view" id="view-map">
+    <header class="topbar topbar-back">
+      <button class="iconbtn back" data-back="home">‹</button>
+      <h1 data-i18n="areaMap"></h1>
+      <button class="iconbtn" id="btn-map-locate" aria-label="locate">📡</button>
+    </header>
+    <div class="map-wrap map-full">
+      <canvas id="area-map"></canvas>
+      <div class="map-badge" id="area-map-badge"></div>
+      <button class="fab" id="btn-map-follow">⌖</button>
+    </div>
+    <div id="map-route-inline" class="route-panel"></div>
+    <div id="map-legend" class="legend card"></div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section class="view" id="view-stats">
+    <header class="topbar topbar-back">
+      <button class="iconbtn back" data-back="home">‹</button>
+      <h1 data-i18n="statsTitle"></h1>
+    </header>
+    <div id="stats-cards" class="summary-row"></div>
+    <div id="stats-detail" class="card"></div>
+  </section>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav class="bottomnav" id="bottomnav">
+    <button class="navitem active" data-nav="home"><span>🏠</span><i data-i18n="navHome"></i></button>
+    <button class="navitem" data-nav="farms"><span>🌴</span><i data-i18n="navFarms"></i></button>
+    <button class="navitem" data-nav="map"><span>🗺</span><i data-i18n="navArea"></i></button>
+    <button class="navitem" data-nav="stats"><span>📊</span><i data-i18n="navStats"></i></button>
+  </nav>
+
+  <!-- ============ OVERLAYS ============ -->
+
+  <!-- Import picker+result -->
+  <div class="overlay" id="ov-import" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h3 data-i18n="importExcel"></h3><button class="iconbtn close" data-close>✕</button></div>
+      <p class="muted" data-i18n="importHint"></p>
+      <input type="file" id="import-file" accept=".xlsx,.xls,.csv" class="fileinput">
+      <label for="import-file" class="btn btn-primary btn-file" data-i18n="chooseFile"></label>
+      <div id="import-progress" class="muted small" hidden></div>
+      <div id="import-warnings" class="warnbox" hidden></div>
+      <button class="btn btn-primary" id="btn-import-confirm" data-i18n="confirmImport" hidden></button>
+    </div>
+  </div>
+
+  <!-- Column mapping -->
+  <div class="overlay" id="ov-mapping" hidden>
+    <div class="sheet scroll">
+      <div class="sheet-head"><h3 data-i18n="columnMapping"></h3><button class="iconbtn close" data-close>✕</button></div>
+      <p class="muted" data-i18n="columnMappingHint"></p>
+      <div id="mapping-fields"></div>
+      <button class="btn btn-primary" id="btn-map-save" data-i18n="saveMapping"></button>
+    </div>
+  </div>
+
+  <!-- Visit flow -->
+  <div class="overlay full" id="ov-visit" hidden>
+    <div class="visit-flow">
+      <div class="sheet-head">
+        <button class="iconbtn" id="visit-back">✕</button>
+        <h3 id="visit-title"></h3>
+        <div class="progress"><div class="progress-fill" id="visit-progress"></div></div>
+      </div>
+      <div class="visit-body" id="visit-body"></div>
+      <div class="visit-foot">
+        <button class="btn btn-primary" id="visit-next" data-i18n="next"></button>
+        <button class="btn btn-outline" id="visit-prev" data-i18n="prev" hidden></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Boundary / polygon capture -->
+  <div class="overlay full" id="ov-boundary" hidden>
+    <div class="visit-flow">
+      <div class="sheet-head">
+        <button class="iconbtn" id="boundary-cancel">✕</button>
+        <h3 id="boundary-title"></h3>
+      </div>
+      <div class="visit-body">
+        <div class="map-wrap map-flow"><canvas id="boundary-map"></canvas><div class="map-badge" id="boundary-badge"></div></div>
+        <div id="boundary-mode" class="btn-row wrap"></div>
+        <div class="pills" id="boundary-points"></div>
+        <div class="warnbox small" id="boundary-area" hidden></div>
+      </div>
+      <div class="visit-foot">
+        <button class="btn btn-outline" id="boundary-clear" data-i18n="clear"></button>
+        <button class="btn btn-primary" id="boundary-done" data-i18n="done" disabled></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Palm add / follow-up -->
+  <div class="overlay full" id="ov-palm" hidden>
+    <div class="visit-flow">
+      <div class="sheet-head">
+        <button class="iconbtn close" data-close>✕</button>
+        <h3 id="palm-title"></h3>
+      </div>
+      <div class="visit-body" id="palm-body"></div>
+      <div class="visit-foot">
+        <button class="btn btn-primary" id="palm-save" data-i18n="save"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="overlay" id="ov-settings" hidden>
+    <div class="sheet scroll">
+      <div class="sheet-head"><h3 data-i18n="settings"></h3><button class="iconbtn close" data-close>✕</button></div>
+      <div class="form">
+        <label class="field"><span data-i18n="language"></span>
+          <select id="set-lang"><option value="ar">العربية</option><option value="en">English</option></select>
+        </label>
+        <label class="field"><span data-i18n="cloudEndpoint"></span>
+          <input type="url" id="set-cloud" placeholder="https://…/api/sync">
+        </label>
+        <label class="field"><span data-i18n="tileSource"></span>
+          <select id="set-tiles">
+            <option value="voyager">CARTO Voyager (بدون مفتاح)</option>
+            <option value="positron">CARTO Positron (بدون مفتاح)</option>
+            <option value="dark">CARTO Dark (بدون مفتاح)</option>
+            <option value="osm">OpenStreetMap (بدون مفتاح)</option>
+            <option value="custom" data-i18n="tileCustom"></option>
+          </select>
+        </label>
+        <input type="url" id="set-tiles-custom" class="field" data-i18n-ph="tileCustomPh" hidden>
+        <p class="muted small" data-i18n="tileSourceHint"></p>
+        <label class="field"><span data-i18n="gpsMismatchM"></span>
+          <input type="number" id="set-mismatch" value="500" min="10" step="10">
+        </label>
+        <label class="field"><span data-i18n="walkEveryM"></span>
+          <input type="number" id="set-walkm" value="8" min="3" step="1">
+        </label>
+        <label class="field"><span data-i18n="notifications"></span>
+          <input type="checkbox" id="set-notify" checked>
+        </label>
+        <div class="btn-row wrap">
+          <button class="btn btn-primary" id="btn-install-app" data-i18n="installApp" hidden></button>
+          <button class="btn btn-outline" id="btn-sync-now" data-i18n="syncNow"></button>
+          <button class="btn btn-outline" id="btn-export-backup" data-i18n="exportBackup"></button>
+          <button class="btn btn-outline" id="btn-import-backup" data-i18n="importBackup"></button>
+        </div>
+        <p class="muted small" id="install-hint" hidden data-i18n="installHint"></p>
+        <input type="file" id="backup-file" accept=".palmcare,.json" class="fileinput" hidden>
+        <p class="muted small" data-i18n="settingsHint"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+</div>
+
+<script src="js/lib/idb.js"></script>
+<script src="js/lib/xlsx.full.min.js"></script>
+<script src="js/lib/jspdf.umd.min.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/db.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/map.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/flow-common.js"></script>
+<script src="js/flow-visit.js"></script>
+<script src="js/flow-palm.js"></script>
+<script src="js/flow-boundary.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/app-core.js"></script>
+<script src="js/app-import.js"></script>
+<script src="js/app-profile.js"></script>
+</body>
+</html>

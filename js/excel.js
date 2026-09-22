@@ -1,0 +1,209 @@
+(function(){
+  const REQUIRED=['name','nationalId','phone','lat','lng','registeredCount'];
+
+  const KEYWORDS = {
+    name:['اسم','الاسم','مزارع','الفلاح','اسم المزارع'.toLowerCase(),'name','farmer'],
+    nationalId:['هوية','رقم الهوية','بطاقة','سجل مدني','national','nationalid','id'],
+    phone:['جوال','رقم الجوال','هاتف','mobile','phone','telefon'],
+    lat:['خط العرض','عرض','latitude','lat','lat1'],
+    lng:['خط الطول','طول','longitude','long','lon','lng','lng1'],
+    registeredCount:['عدد النخيل','عدد','النخيل','العدد','count','num','nr']
+  };
+
+  function norm(s){ return String(s||'').trim().replace(/\s+/g,' ').toLowerCase(); }
+
+  function autodetect(headers){
+    const map={};
+    const lower=headers.map(norm);
+    for(const field of REQUIRED){
+      let found=null, score=0;
+      lower.forEach((h,i)=>{
+        if(!h) return;
+        for(const kw of KEYWORDS[field]){
+          const k=norm(kw);
+          if(h===k){ if(100>score){ score=100; found=i; } }
+          else if(h.includes(k) && score<50){ score=50; found=i; }
+        }
+      });
+      if(found!=null) map[field]=found;
+    }
+    return map;
+  }
+
+  function mappingComplete(map){
+    return REQUIRED.every(f=>{ const idx=map[f]; return typeof idx==='number' && idx>=0; });
+  }
+
+  function buildFarmFromRow(row, map){
+    const cell=(col)=>{ const idx=map[col]; return (idx!=null && row!=null)?row[idx]:''; }
+    const name=String(cell('name')||'').trim();
+    const nationalId=String(cell('nationalId')||'').trim();
+    const phone=String(cell('phone')||'').trim();
+    const lat=Geo.parseCoord(cell('lat'));
+    const lng=Geo.parseCoord(cell('lng'));
+    const registeredCount=parseInt(String(cell('registeredCount')||'').replace(/[^0-9]/g,''),10)||0;
+    const flags=[];
+    if(!lat || !lng) flags.push('noCoords');
+    else if(!Geo.isValidCoord(lat,lng) || !Geo.isReasonableSaudi(lat,lng)) flags.push('badCoords');
+    if(!name) flags.push('noName');
+    return {name, nationalId, phone, lat, lng, registeredCount, flags};
+  }
+
+  function readRowsFromBuffer(buf){
+    const wb=XLSX.read(new Uint8Array(buf), {type:'array', cellDates:false});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+  }
+
+  async function parseFile(file){
+    const buf=await readFileBuffer(file);
+    const rows=readRowsFromBuffer(buf);
+    if(!rows || !rows.length) throw new Error('empty');
+    const headers=rows[0].map(function(s){ return String(s); });
+    const data=rows.slice(1).filter(r=>r.some(c=>String(c).trim()!==''));
+    return {file, headers, data};
+  }
+
+  function readFileBuffer(file){
+    if(typeof file.arrayBuffer==='function'){
+      // Safari < 14 may reject in some WebViews; fall back below if it fails.
+      return file.arrayBuffer().catch(()=>fileReaderArrayBuffer(file));
+    }
+    return fileReaderArrayBuffer(file);
+  }
+  function fileReaderArrayBuffer(file){
+    return new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=()=>res(r.result);
+      r.onerror=()=>rej(r.error||new Error('fileread'));
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  function weekId(){
+    const d=new Date(); d.setHours(12,0,0,0);
+    const day=(d.getDay()+6)%7; // week starts Monday
+    d.setDate(d.getDate()-day);
+    d.setHours(12,0,0,0);
+    return d.getTime();
+  }
+
+  async function runImport(file, map){
+    const parsed=await parseFile(file);
+    const out={added:0, updated:0, skipped:0, flags:[], farms:[], map};
+    parsed.data.forEach(function(row,i){
+      const f=buildFarmFromRow(row,map);
+      if(f.flags.length){
+        out.flags.push({row:i+2, name:f.name||'-', nationalId:f.nationalId, phone:f.phone, flags:f.flags});
+      }
+      if(!f.name && !f.nationalId && !f.phone) return; // empty row
+      out.farms.push(f);
+    });
+    const wk=weekId();
+    for(const f of out.farms){
+      const existing=await DB.matchFarm(f);
+      let rec;
+      if(existing){
+        rec=existing;
+        rec.flags=(rec.flags||[]).slice();
+        if(f.name){ rec.name=f.name; rec.flags=rec.flags.filter(x=>x!=='noName'); }
+        if(f.nationalId) rec.nationalId=f.nationalId;
+        if(f.phone) rec.phone=f.phone;
+        if(f.registeredCount) rec.registeredCount=f.registeredCount;
+        if(f.lat!=null && f.lng!=null){ rec.lat=f.lat; rec.lng=f.lng; rec.flags=rec.flags.filter(x=>x!=='noCoords'&&x!=='badCoords'); }
+        out.updated++;
+      } else {
+        rec={
+          id:Geo.uid('farm'), name:f.name, nationalId:f.nationalId, phone:f.phone,
+          lat:f.lat, lng:f.lng, registeredCount:f.registeredCount,
+          flags:(f.flags&&f.flags.length)?f.flags.slice():undefined,
+          createdAt:Date.now(), boundary:null, obstacleZones:[]
+        };
+        out.added++;
+      }
+      rec.batchIds=rec.batchIds||[];
+      if(rec.batchIds.indexOf(wk)<0) rec.batchIds.push(wk);
+      rec.lastBatchId=wk;
+      if(rec.id==null) rec.id=Geo.uid('farm');
+      await DB.saveFarm(rec);
+    }
+    const batch={
+      id:Geo.uid('batch'), weekDate:wk, importedAt:Date.now(),
+      fileName:file.name, count:out.farms.length, added:out.added, updated:out.updated,
+      map:Object.assign({},map), flags:out.flags
+    };
+    await DB.saveBatch(batch);
+    await DB.setSetting('columnMapping', Object.assign({},map));
+    await DB.setSetting('columnMappingHeader', parsed.headers);
+    return out;
+  }
+
+  function makeWorkbook(aoa, sheetName){
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=aoa[0].map(function(){ return {wch:22}; });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    return XLSX.write(wb,{type:'array', bookType:'xlsx'});
+  }
+
+  function farmToExcel(farm, visits, palms, boundary){
+    const aoa=[];
+    aoa.push([I18N.t('reportExcel'), '']);
+    aoa.push([I18N.t('farmer'), farm.name||'']);
+    aoa.push([I18N.t('nationalId'), farm.nationalId||'']);
+    aoa.push([I18N.t('phone'), farm.phone||'']);
+    aoa.push([I18N.t('lat'), farm.lat!=null?farm.lat:'']);
+    aoa.push([I18N.t('lng'), farm.lng!=null?farm.lng:'']);
+    aoa.push([I18N.t('registeredCount'), farm.registeredCount||0]);
+    aoa.push(['Area (ha)', boundary? Geo.fmtArea(Geo.polygonAreaHa(boundary.points)) : I18N.t('areaNotCalculated')]);
+    aoa.push([]);
+    visits.forEach(function(v,idx){
+      if(v.actualCount!=null && v.registeredCount && v.actualCount!==v.registeredCount){
+        aoa.push([I18N.t('discrepancyNote')+' '+(idx+1), I18N.t('countDiscrepancy',{registered:v.registeredCount,actual:v.actualCount})]);
+      }
+      if(v.obstacles && v.obstacles.length){
+        aoa.push([I18N.t('obstaclesTask')+' '+(idx+1), v.obstacles.join(' / ')]);
+      }
+      if(v.note) aoa.push([I18N.t('freeNote')+' '+(idx+1), v.note]);
+    });
+    aoa.push([]);
+    aoa.push([I18N.t('palmCode'), I18N.t('severity'), I18N.t('pesticide'), I18N.t('dosage'),
+              I18N.t('treatment'), I18N.t('nextInspection'), I18N.t('followUpResult'),
+              I18N.t('lat'), I18N.t('lng')]);
+    palms.forEach(function(p){
+      aoa.push([p.code||'', p.severity||'', p.pesticide||'', p.dosage||'',
+                p.treatmentDate?Geo.fmtDate(p.treatmentDate):'',
+                p.nextInspectionDate?Geo.fmtDate(p.nextInspectionDate):'',
+                p.result||'', p.lat!=null?p.lat:'', p.lng!=null?p.lng:'']);
+    });
+    return makeWorkbook(aoa,'Report');
+  }
+
+  function visitsToExcel(visits, farmById){
+    const aoa=[[I18N.t('farmer'),I18N.t('nationalId'),I18N.t('phone'),
+                I18N.t('date'),I18N.t('registeredCount'),I18N.t('actualCount'),
+                I18N.t('obstacles'),I18N.t('freeNote'),I18N.t('lat'),I18N.t('lng')]];
+    visits.forEach(function(v){
+      const f=farmById.get(v.farmId)||{};
+      aoa.push([f.name||'', f.nationalId||'', f.phone||'',
+                v.date?Geo.fmtDate(v.date):'', v.registeredCount!=null?v.registeredCount:'',
+                v.actualCount!=null?v.actualCount:'',
+                (v.obstacles||[]).join(' / '), v.note||'',
+                v.gps?v.gps.lat:'', v.gps?v.gps.lng:'']);
+    });
+    return makeWorkbook(aoa,'Visits');
+  }
+
+  function downloadBlob(blob, filename){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },800);
+  }
+
+  window.ExcelUtil={
+    parseFile, autodetect, mappingComplete, buildFarmFromRow, runImport,
+    farmToExcel, visitsToExcel, downloadBlob, weekId, REQUIRED
+  };
+})();
