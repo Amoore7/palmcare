@@ -452,9 +452,18 @@
       const accPx=this.projectToScreen(this.loc.lat, this.loc.lng+acc);
       const aR=accPx.x-s.x;
       if(aR>4&&aR<300){ ctx.beginPath(); ctx.arc(s.x,s.y,aR,0,Math.PI*2); ctx.fillStyle='rgba(34,139,84,.12)'; ctx.fill(); }
-      ctx.beginPath(); ctx.arc(s.x,s.y,9,0,Math.PI*2); ctx.fillStyle='#228b54'; ctx.fill();
+      const h=this.loc.heading;
+      if(h!=null){
+        // direction wedge like navigation apps
+        const rad=(h-90)*Math.PI/180;
+        ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(rad);
+        ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-7,-7); ctx.lineTo(-4,0); ctx.lineTo(-7,7); ctx.closePath();
+        ctx.fillStyle='#228b54'; ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.restore();
+      }
+      ctx.beginPath(); ctx.arc(s.x,s.y,(h!=null?5:9),0,Math.PI*2); ctx.fillStyle='#228b54'; ctx.fill();
       ctx.beginPath(); ctx.arc(s.x,s.y,14,0,Math.PI*2); ctx.strokeStyle='rgba(34,139,84,.5)'; ctx.lineWidth=2; ctx.stroke();
-      ctx.beginPath(); ctx.arc(s.x,s.y,4,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(s.x,s.y,3,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
     }
     dispose(){
       MAPS.delete(this);

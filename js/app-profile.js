@@ -169,6 +169,8 @@
   // ================= AREA MAP =================
   const AreaMap={
     async render(){
+      const vv=$('view-map');
+      if(vv&&vv.hidden){ if(typeof TrailUI!=='undefined'&&TrailUI) TrailUI.update(); return; }
       const canvas=$('area-map');
       if(areaMap){ try{ areaMap.resize(); }catch(e){} }   // ensure non-zero size once visible
       if(!areaMap){
@@ -231,6 +233,11 @@
           }
         }
       }
+      // current trip trail (persisted breadcrumb of where we actually drove)
+      const tr=window.Trail&&Trail.session;
+      if(tr && tr.points && tr.points.length>=2){
+        line.push({points:tr.points.map(p=>({lat:p.lat,lng:p.lng})),color:'#0ea5e9',width:3,dash:[]});
+      }
       // legend: which farm owns which boundary
       const bounded=active.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
       const leg=$('map-legend');
@@ -253,6 +260,7 @@
       areaMap.setItems({polygons:polys,points,lines:line.concat(traceLines)});
       if(!areaMap._fitDone){ areaMap.fit(); areaMap._fitDone=true; }
       $('#area-map-badge').textContent=I18N.t('allFarms')+': '+active.length+' · '+I18N.t('boundaries')+': '+bounded.length;
+      TrailUI.update();
     }
   };
   $('#btn-map-locate').addEventListener('click',async()=>{
@@ -267,7 +275,54 @@
     }catch(e){ toast(I18N.t('gpsFail')); }
     btn.disabled=false;
   });
-  $('#btn-map-follow').addEventListener('click',()=>{ if(areaMap&&areaMap.loc) areaMap.setLocation(areaMap.loc,true); });
+  const TrailUI={
+    _render:0,
+    fmtDur(ms){
+      const s=Math.max(0,Math.round((ms||0)/1000));
+      const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+      return (h?h+':':'')+(h?String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0');
+    },
+    update(){
+      const startBtn=$('btn-trail-start'), stopBtn=$('btn-trail-stop'), clearBtn=$('btn-trail-clear'), hud=$('map-trail-hud');
+      if(!startBtn) return;
+      const run=!!(window.Trail&&Trail.running);
+      const s=window.Trail&&Trail.session;
+      if(run){ startBtn.textContent='⏺ '+I18N.t('trailActive'); startBtn.disabled=true; stopBtn.hidden=false; }
+      else{ startBtn.textContent='▶ '+I18N.t('trailStart'); startBtn.disabled=false; stopBtn.hidden=true; }
+      stopBtn.textContent='⏹ '+I18N.t('trailStop');
+      clearBtn.textContent='🗑 '+I18N.t('trailClear');
+      const fb=$('btn-map-follow'); if(fb) fb.classList.toggle('on',!!(window.Trail&&Trail.follow));
+      if(hud&&s){
+        if(!run&&(!s.points||!s.points.length)){
+          hud.textContent=I18N.t('trailNoFix');
+        } else {
+          const parts=[I18N.t('trailDist')+': <b>'+s.distance.toFixed(1)+' '+I18N.t('km')+'</b>'];
+          parts.push(I18N.t('trailDur')+': '+this.fmtDur(s.durationMs||(s.start?Date.now()-s.start:0)));
+          if(s.speed!=null) parts.push(I18N.t('trailSpeed')+': <b>'+s.speed.toFixed(0)+' '+(I18N.get()==='ar'?'كم/س':'km/h')+'</b>');
+          if(s.acc!=null&&s.acc>0) parts.push(I18N.t('trailAcc')+': ±'+s.acc+' '+(I18N.get()==='ar'?'م':'m'));
+          hud.innerHTML=parts.join(' · ');
+        }
+      }
+    }
+  };
+  if(window.Trail){
+    Trail.setHandler(loc=>{
+      if(loc&&areaMap) areaMap.setLocation(loc,Trail.follow);
+      const now=Date.now();
+      if(now-TrailUI._render>1100){ TrailUI._render=now; TrailUI.update(); AreaMap.render().catch(()=>{}); }
+      else TrailUI.update();
+    });
+    $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); });
+    $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); });
+    $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
+  }
+  $('#btn-map-follow').addEventListener('click',()=>{
+    if(window.Trail){
+      Trail.follow=!Trail.follow;
+      $('btn-map-follow').classList.toggle('on',Trail.follow);
+    }
+    if(areaMap&&areaMap.loc) areaMap.setLocation(areaMap.loc,true);
+  });
   $('#area-map').addEventListener('dblclick',()=>{ if(areaMap) areaMap.fit(); });
 
   // ================= STATS =================

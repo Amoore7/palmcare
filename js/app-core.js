@@ -348,6 +348,7 @@
 
     try{
       await DB.init();
+      if(window.Trail) await Trail.init();      // restore trip session + reconnect GPS watch if it was recording
       await App.Settings.loadValues();
       refreshAll();
     }catch(e){
@@ -366,6 +367,6 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.5'};
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.6'};
   document.addEventListener('DOMContentLoaded',init);
 })();

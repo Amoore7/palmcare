@@ -103,6 +103,14 @@
       <button class="fab" id="btn-map-follow">⌖</button>
     </div>
     <div id="map-route-inline" class="route-panel"></div>
+    <div id="map-trail-bar" class="route-panel">
+      <div class="btn-row wrap">
+        <button class="btn btn-primary" id="btn-trail-start" style="min-height:40px">▶ </button>
+        <button class="btn btn-outline" id="btn-trail-stop" style="min-height:40px"></button>
+        <button class="btn btn-outline" id="btn-trail-clear" style="min-height:40px"></button>
+      </div>
+      <div id="map-trail-hud" class="muted small" style="margin-top:6px"></div>
+    </div>
     <div id="map-legend" class="legend card"></div>
   </section>
 
@@ -310,6 +318,7 @@
 <script src="js/db.js"></script>
 <script src="js/excel.js"></script>
 <script src="js/map.js"></script>
+<script src="js/trail.js"></script>
 <script src="js/notifications.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/flow-common.js"></script>

@@ -1,5 +1,5 @@
 /* PalmCare Service Worker — offline-first app shell + cached raster tiles */
-const VERSION='palmcare-v10';
+const VERSION='palmcare-v11';
 const PRECACHE='palmcare-precache-'+VERSION;
 const TILES_CACHE='palmcare-tiles-v2';
 const PRECACHE_URLS=[
@@ -13,6 +13,7 @@ const PRECACHE_URLS=[
   './js/db.js',
   './js/excel.js',
   './js/map.js',
+  './js/trail.js',
   './js/notifications.js',
   './js/sync.js',
   './js/flow-common.js',
