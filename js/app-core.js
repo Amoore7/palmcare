@@ -108,14 +108,34 @@
             const dm=Geo.distM(last,f);
             if(dm!=null) d=Geo.fmtDist(dm);
           }
+          const bar=el('div',{class:'farm-progress'},[]);
+          if(f.followUpDate){
+            const dur=5*86400000;
+            const pct=Math.max(0,Math.min(100,Math.round((Date.now()-(f.followUpDate-dur))/dur*100)));
+            const cls=Geo.dueClass(f.followUpDate);
+            bar.appendChild(el('span',{style:'width:'+pct+'%;background:'+(cls==='red'?'#d64541':cls==='yellow'?'#e8a33d':'#228b54')}));
+          } else {
+            bar.appendChild(el('span',{style:'width:0%'}));
+          }
+          const actions=el('div',{class:'card-actions'},[]);
+          const ph=String(f.phone||'').replace(/[^0-9+]/g,'');
+          if(ph){
+            actions.appendChild(el('button',{class:'btn btn-outline',title:I18N.t('call'),onclick:ev=>{ev.stopPropagation();window.open('tel:'+ph,'_self');}},['📞']));
+            let w=ph.startsWith('+')?ph.slice(1):ph;
+            if(w.startsWith('0')) w='966'+w.slice(1);
+            actions.appendChild(el('button',{class:'btn btn-outline',title:'WhatsApp',onclick:ev=>{ev.stopPropagation();window.open('https://wa.me/'+w,'_blank');}},['💬']));
+          }
+          actions.appendChild(el('button',{class:'btn btn-outline',title:I18N.t('openInMaps'),onclick:ev=>{ev.stopPropagation();window.App.showFarmOnMap(f);}},['🗺']));
           const card=el('div',{class:'farm-card',onclick:()=>goto('farm',f.id)},[
             el('div',{class:'info'},[
-              el('h4',{},[f.name||'—']),
+              el('h4',{},[f.name||'—'+(f.archived?' 📦':'')]),
               el('div',{class:'sub'},[
-                ((f.nationalId)?('ID:'+f.nationalId+' · '):'')+((f.phone)?('📞'+f.phone):'')+
-                ((f.registeredCount)?(' · 🌴 '+f.registeredCount):'')+((d)?(' · 📍'+d):'')+
-                ((Array.isArray(f.flags)&&f.flags.length)?(' · ⚠️ '+f.flags.join(',')):'')
-              ])
+                ((f.nationalId)?('ID:'+f.nationalId+' · '):'')+((f.registeredCount)?('🌴 '+f.registeredCount+' · '):'')+
+                ((d)?('📍'+d+' · '):'')+((f.archived)?('📦 '+I18N.t('archived')+' · '):'')+
+                ((Array.isArray(f.flags)&&f.flags.length)?('⚠️ '+f.flags.join(',')):'')
+              ]),
+              bar,
+              actions
             ]),
             el('span',{class:'due '+badgeColor},[badgeTxt+(pendingC?(' '+pendingC):'')])
           ]);
@@ -124,6 +144,24 @@
       $('#farms-empty').hidden=farms.length>0;
     }
   };
+
+  // show a farm on the area map (from farm cards / follow-ups)
+  async function showFarmOnMap(farm){
+    if(!farm) return;
+    await App.goto('map');
+    await new Promise(r=>setTimeout(r,350));
+    const m=window.App.AreaMap&&window.App.AreaMap.instance;
+    if(m){
+      let c=null;
+      if(farm.lat!=null) c={lat:farm.lat,lng:farm.lng};
+      else if(farm.boundary&&farm.boundary.points&&farm.boundary.points.length){
+        const pts=farm.boundary.points; let la=0,lo=0;
+        pts.forEach(p=>{ la+=p.lat; lo+=p.lng; });
+        c={lat:la/pts.length,lng:lo/pts.length};
+      }
+      if(c){ m.setZoom(16,c); window.App.AreaMap.render(); }
+    }
+  }
 
   // ---------- NEW VISIT chooser ----------
   const NewVisit={
@@ -309,6 +347,6 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,VERSION:'0.2'};
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.2'};
   document.addEventListener('DOMContentLoaded',init);
 })();

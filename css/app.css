@@ -36,6 +36,10 @@ body{height:100dvh;overflow:hidden}
 .farm-card h4{margin:0;font-size:16px}
 .farm-card .sub{color:var(--muted);font-size:13px;margin-top:2px}
 .farm-card .info{flex:1;min-width:0}
+.farm-progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:7px}
+.farm-progress>span{display:block;height:100%;border-radius:3px;transition:width .25s}
+.card-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.card-actions button{min-width:44px;min-height:44px;padding:6px 12px;font-size:14px;line-height:1}
 .farm-badge{margin-right:auto;font-size:12px;white-space:nowrap;flex-shrink:0}
 .muted{color:var(--muted)}
 .small{font-size:13px}

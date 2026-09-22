@@ -10,7 +10,23 @@
     registeredCount:['عدد النخيل','عدد','النخيل','العدد','count','num','nr']
   };
 
-  function norm(s){ return String(s||'').trim().replace(/\s+/g,' ').toLowerCase(); }
+  function norm(s){ return String(s||'').trim().replace(/^\uFEFF/,'').replace(/\s+/g,' ').toLowerCase(); }
+
+  // SheetJS reads plain-text cells passed as bytes; UTF-8 CSV without BOM can
+  // come back as one Latin-1 char per byte (mojibake). Re-decode such strings.
+  function unmangle(s){
+    const str=String(s||''); if(!str) return str;
+    let hasHi=false, hasLo=false;
+    for(let i=0;i<str.length;i++){ const c=str.charCodeAt(i); if(c>255) hasHi=true; else hasLo=true; }
+    if(hasHi){ return str; } // proper Unicode cell (e.g. from real .xlsx)
+    if(!hasLo) return str;   // empty
+    const bytes=new Uint8Array(str.length);
+    for(let i=0;i<str.length;i++) bytes[i]=str.charCodeAt(i)&0xff;
+    try{
+      const t=new TextDecoder('utf-8').decode(bytes);
+      return t.indexOf('\uFFFD')>-1 ? str : t;
+    }catch(e){ return str; }
+  }
 
   function autodetect(headers){
     const map={};
@@ -59,8 +75,8 @@
     const buf=await readFileBuffer(file);
     const rows=readRowsFromBuffer(buf);
     if(!rows || !rows.length) throw new Error('empty');
-    const headers=rows[0].map(function(s){ return String(s); });
-    const data=rows.slice(1).filter(r=>r.some(c=>String(c).trim()!==''));
+    const headers=rows[0].map(function(s){ return unmangle(String(s)); });
+    const data=rows.slice(1).map(r=>r.map(c=>unmangle(String(c)))).filter(r=>r.some(c=>String(c).trim()!==''));
     return {file, headers, data};
   }
 
@@ -96,7 +112,7 @@
       if(f.flags.length){
         out.flags.push({row:i+2, name:f.name||'-', nationalId:f.nationalId, phone:f.phone, flags:f.flags});
       }
-      if(!f.name && !f.nationalId && !f.phone) return; // empty row
+      if(!f.name){ out.skipped++; return; } // no farm name → cannot import
       out.farms.push(f);
     });
     const wk=weekId();
