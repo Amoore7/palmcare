@@ -158,6 +158,11 @@ const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},[
        const map=await renderMap(farm);
        FarmTrail.init(farm.id, map);
        FarmTrail._updateUI();
+       // bind farm trail buttons (now that DOM elements exist)
+       $('#btn-track-route').onclick=()=>{ $('#farm-trail-bar').hidden=false; FarmTrail._updateUI(); };
+       $('#btn-farm-trail-start').onclick=()=>{ FarmTrail.start(); };
+       $('#btn-farm-trail-stop').onclick=()=>{ FarmTrail.stop(); };
+       $('#btn-farm-trail-clear').onclick=()=>{ FarmTrail.clear(); };
        renderPalms(farm);
        renderVisits(farm);
        $('#btn-del-boundary').hidden=!farm.boundary;
@@ -436,20 +441,11 @@ const TrailUI={
        if(now-TrailUI._render>1100){ TrailUI._render=now; TrailUI.update(); AreaMap.render().catch(()=>{}); }
        else TrailUI.update();
      });
-     $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); AreaMap.render().catch(()=>{}); });
-     $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
-     $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
-   }
-   // Farm trail buttons
-   $('#btn-track-route').addEventListener('click',()=>{
-     const bar=$('#farm-trail-bar');
-     if(bar) bar.hidden=false;
-     FarmTrail._updateUI();
-   });
-   $('#btn-farm-trail-start').addEventListener('click',()=>{ FarmTrail.start(); });
-   $('#btn-farm-trail-stop').addEventListener('click',()=>{ FarmTrail.stop(); });
-   $('#btn-farm-trail-clear').addEventListener('click',()=>{ FarmTrail.clear(); });
-  $('#btn-map-follow').addEventListener('click',()=>{
+$('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); AreaMap.render().catch(()=>{}); });
+      $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
+      $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
+    }
+   $('#btn-map-follow').addEventListener('click',()=>{
     if(window.Trail){
       Trail.follow=!Trail.follow;
       $('btn-map-follow').classList.toggle('on',Trail.follow);
