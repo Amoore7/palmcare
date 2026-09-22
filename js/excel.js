@@ -31,10 +31,20 @@
   function autodetect(headers){
     const map={};
     const lower=headers.map(norm);
+    // phase 1: explicit y/x sub-header tags from "إحداثيات المزرعة (y)/(x)"
+    const tagged={};
+    lower.forEach((h,i)=>{ const m=h&&h.match(/\(([yx])\)/); if(m) tagged[i]=m[1]; });
+    // phase 2: keyword matching; a column tagged (y) feeds only lng, (x) only lat.
     for(const field of REQUIRED){
       let found=null, score=0;
       lower.forEach((h,i)=>{
         if(!h) return;
+        if(tagged[i]){
+          const isLng=tagged[i]==='y';
+          if(field==='lat' && !isLng){ if(100>score){ score=100; found=i; } return; }
+          if(field==='lng' && isLng){ if(100>score){ score=100; found=i; } return; }
+          return; // tagged coordinate columns never serve other fields
+        }
         for(const kw of KEYWORDS[field]){
           const k=norm(kw);
           if(h===k){ if(100>score){ score=100; found=i; } }
@@ -44,6 +54,66 @@
       if(found!=null) map[field]=found;
     }
     return map;
+  }
+
+  // --- "خطة سير المندوب" vendor layout helpers ---
+  // Rows: [0]=title (merged, ignored), [1]=main headers, [2]=sub headers y/x under
+  // إحداثيات المزرعة, then farm rows; blue separator rows are fully empty.
+  function headerScore(row){
+    const hs=(row||[]).map(norm);
+    let n=0;
+    for(const field of REQUIRED){
+      let hit=false;
+      hs.forEach((h,i)=>{
+        if(!h) return;
+        for(const kw of KEYWORDS[field]){
+          const k=norm(kw);
+          if(h===k || h.includes(k)){ hit=true; }
+        }
+      });
+      if(hit) n++;
+    }
+    return n;
+  }
+  function detectHeaderRow(rows){
+    for(let i=0;i<Math.min(4,rows.length);i++){
+      if(headerScore(rows[i])>=3) return i;
+    }
+    return 0;
+  }
+  function isSubHeaderRow(row){
+    let y=0,x=0;
+    (row||[]).forEach(c=>{ const n=norm(c); if(n==='y')y++; else if(n==='x')x++; });
+    return y>=1 && x>=1;
+  }
+  function tagSubHeader(rows, hi, merges){
+    const main=rows[hi], sub=rows[hi+1];
+    const tags={};
+    const coordsCols=new Set();
+    (merges||[]).forEach(m=>{
+      if(m.s.r===hi){
+        const anchor=norm(main[m.s.c]||'');
+        if(anchor.indexOf('احداثي')>-1) for(let c=m.s.c;c<=m.e.c;c++) coordsCols.add(c);
+      }
+    });
+    if(!coordsCols.size){
+      for(let c=0;c<main.length;c++) if(norm(main[c]||'').indexOf('احداثي')>-1) coordsCols.add(c);
+    }
+    coordsCols.forEach(c=>{
+      const n=norm(sub[c]||'');
+      if(n==='y'||n==='x') tags[c]=n;
+    });
+    return tags;
+  }
+  function fillMergedRows(rows, merges){
+    (merges||[]).forEach(m=>{
+      if(m.s.c!==m.e.c || m.s.r===m.e.r) return;           // vertical single-column spans only
+      const anchor=String(rows[m.s.r]&&rows[m.s.r][m.s.c]||'');
+      if(!anchor) return;
+      for(let r=m.s.r+1;r<=m.e.r;r++){
+        if(rows[r] && !String(rows[r][m.s.c]).trim()) rows[r][m.s.c]=anchor;
+      }
+    });
   }
 
   function mappingComplete(map){
@@ -83,7 +153,7 @@
     const buf=await readFileBuffer(file);
     const u8=new Uint8Array(buf);
     const isCsv=/\.csv$/i.test(file.name||'');
-    let rows;
+    let ws=null, rows;
     if(isCsv){
       // Excel often exports CSVs as UTF-16 or UTF-8 variants; SheetJS cannot read these
       // reliably from bytes, so decode to a JS string first and let SheetJS re-parse it.
@@ -95,16 +165,21 @@
         text=new TextDecoder('utf-8').decode(u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength));
       }
       const wb=XLSX.read(text,{type:'string', cellDates:false});
-      const ws=wb.Sheets[wb.SheetNames[0]];
+      ws=wb.Sheets[wb.SheetNames[0]];
       rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
     } else {
       const wb=XLSX.read(u8,{type:'array', cellDates:false});
-      const ws=wb.Sheets[wb.SheetNames[0]];
+      ws=wb.Sheets[wb.SheetNames[0]];
       rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
     }
     if(!rows || !rows.length) throw new Error('empty');
-    const headers=(rows[0]||[]).map(s=>unmangle(String(s)));
-    const data=rows.slice(1).map(r=>(r||[]).map(c=>unmangle(String(c)))).filter(r=>r.some(c=>String(c).trim()!==''));
+    const all=rows.map(function(r){ return (r||[]).map(function(c){ return unmangle(String(c)); }); });
+    fillMergedRows(all, ws['!merges']||[]);          // day/date/governorate groups
+    const hi=detectHeaderRow(all);                    // main header row (skips title)
+    let tags={}, dataStart=hi+1;
+    if(isSubHeaderRow(all[hi+1])){ tags=tagSubHeader(all,hi,ws['!merges']||[]); dataStart=hi+2; }
+    const headers=all[hi].map(function(base,c){ return tags[c]?('احداثيات ('+tags[c]+')'):base; });
+    const data=all.slice(dataStart).filter(function(r){ return r.some(function(c){ return String(c).trim()!==''; }); });
     return {file, headers, data};
   }
 

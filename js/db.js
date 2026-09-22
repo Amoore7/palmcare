@@ -67,16 +67,27 @@
       for(const p of ps){ await tx.objectStore('palms').delete(p.id); }
       await tx.done;
     },
-    // merge/import: match by nationalId OR phone (non-empty)
+    // merge/import: match by nationalId OR phone (non-empty), AND when coordinates are
+    // present prefer the candidate whose field is nearby so one farmer with several
+    // farms (name suffixed "(1)(2)") keeps separate records instead of merging them.
     async matchFarm(row){
       const farms=await this.farms();
       const nid=String(row.nationalId||'').trim();
       const ph=String(row.phone||'').trim();
       if(!nid && !ph) return null;
-      return farms.find(f=>
+      const hasCoord=row.lat!=null && row.lng!=null && isFinite(row.lat) && isFinite(row.lng);
+      const near=(f)=> f.lat!=null && f.lng!=null && Math.abs(f.lat-row.lat)<0.002 && Math.abs(f.lng-row.lng)<0.002;
+      const candidates=farms.filter(f=>
         (nid && String(f.nationalId||'').trim()===nid) ||
         (ph && String(f.phone||'').trim().replace(/[^0-9+]/g,'')===ph.replace(/[^0-9+]/g,''))
-      ) || null;
+      );
+      if(!candidates.length) return null;
+      if(hasCoord){
+        return candidates.filter(near)[0] || null;   // same person, different field → new farm
+      }
+      // no coordinates on the imported row: merge only if unambiguous
+      const noCoord=candidates.filter(f=> f.lat==null || f.lng==null);
+      return noCoord.length? noCoord[0] : null;
     },
 
     // --- visits ---
