@@ -11,6 +11,114 @@
   function hexToRgba(hex,a){ const n=parseInt(hex.slice(1),16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
 
   // ================= FARM PROFILE =================
+  // ================= FARM TRAIL (per-farm GPS breadcrumb) =================
+  const FarmTrail={
+    _farmId: null,
+    _running: false,
+    _wid: null,
+    _points: [],
+    _handler: null,
+    _farmMap: null,
+    _startTime: null,
+
+    init(farmId, farmMap){
+      this._farmId=farmId;
+      this._farmMap=farmMap;
+      this._load();
+    },
+
+    async _load(){
+      const farm=await DB.farm(this._farmId);
+      if(farm && farm.trail && farm.trail.points && farm.trail.points.length){
+        this._points=farm.trail.points;
+        this._drawTrail();
+      }
+    },
+
+    _drawTrail(){
+      if(!this._farmMap || this._points.length<2) return;
+      this._farmMap.setItems({
+        polygons: this._farmMap.items.polygons||[],
+        points: this._farmMap.items.points||[],
+        lines: [...(this._farmMap.items.lines||[]), {points:this._points, color:'#0ea5e9', width:3, dash:[]}]
+      });
+    },
+
+    _save(){
+      return DB.farm(this._farmId).then(farm=>{
+        if(!farm) return;
+        farm.trail={points:this._points, updatedAt:Date.now()};
+        return DB.saveFarm(farm);
+      });
+    },
+
+    setHandler(fn){ this._handler=fn; },
+
+    start(){
+      if(this._running) return;
+      const gl=navigator.geolocation;
+      if(!gl){ toast(I18N.t('gpsFail')); return; }
+      this._running=true;
+      this._points=[];
+      this._startTime=Date.now();
+      this._wid=gl.watchPosition(this._onFix.bind(this), this._onErr.bind(this), {enableHighAccuracy:true, timeout:10000, maximumAge:2000});
+      this._updateUI();
+    },
+
+    _onFix(p){
+      if(!this._running) return;
+      const c=p.coords;
+      const lat=c.latitude, lng=c.longitude, acc=Math.max(Math.round(c.accuracy||0),0);
+      if(acc>150) return;
+      const last=this._points[this._points.length-1];
+      if(last){
+        const moved=Geo.distM(last,{lat,lng});
+        if(moved<4) return;
+      }
+      this._points.push({lat,lng,acc,ts:Date.now()});
+      if(this._points.length>2000) this._points.shift();
+      this._drawTrail();
+      this._save();
+      if(this._handler) this._handler({lat,lng,accuracy:acc, pointsCount:this._points.length});
+    },
+
+    _onErr(){ /* keep watching */ },
+
+    stop(){
+      if(!this._running) return;
+      this._running=false;
+      if(this._wid){ navigator.geolocation.clearWatch(this._wid); this._wid=null; }
+      this._save();
+      this._updateUI();
+    },
+
+    clear(){
+      this._points=[];
+      this._save();
+      this._drawTrail();
+      this._updateUI();
+    },
+
+    get running(){ return this._running; },
+    get points(){ return this._points; },
+
+    _updateUI(){
+      const startBtn=$('#btn-farm-trail-start');
+      const stopBtn=$('#btn-farm-trail-stop');
+      const clearBtn=$('#btn-farm-trail-clear');
+      const bar=$('#farm-trail-bar');
+      if(!startBtn) return;
+      if(this._running){
+        startBtn.hidden=true; stopBtn.hidden=false;
+      }else{
+        startBtn.hidden=false; stopBtn.hidden=true;
+      }
+      clearBtn.hidden=this._points.length===0;
+      if(bar) bar.hidden=false;
+    }
+  };
+
+  // ================= FARM PROFILE =================
   const Profile={
     async render(farmId){
       const farm=await DB.farm(farmId);
@@ -44,15 +152,17 @@
       info.appendChild(kv(I18N.t('lat')+' / '+I18N.t('lng'),span));
       info.appendChild(kv(I18N.t('registeredCount'),String(farm.registeredCount||0)));
       info.appendChild(kv(I18N.t('areaNotCalculated'), farm.boundary? Geo.fmtArea(Geo.polygonAreaHa(farm.boundary.points))+' '+I18N.t('ha') : '—'));
-      const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},['✏️ '+I18N.t('editFarm')]);
-      info.appendChild(editBtn);
+const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},['✏️ '+I18N.t('editFarm')]);
+       info.appendChild(editBtn);
 
-      renderMap(farm);
-      renderPalms(farm);
-      renderVisits(farm);
-      $('#btn-del-boundary').hidden=!farm.boundary;
-    }
-  };
+       const map=await renderMap(farm);
+       FarmTrail.init(farm.id, map);
+       FarmTrail._updateUI();
+       renderPalms(farm);
+       renderVisits(farm);
+       $('#btn-del-boundary').hidden=!farm.boundary;
+     }
+   };
 
   async function editFarm(farm){
     const ov=el('div',{class:'overlay'});
@@ -95,6 +205,7 @@
     $('#farm-map-badge').innerHTML='';
     if(farm.boundary){ $('#farm-map-badge').textContent=I18N.t('areaIs',{a:Geo.fmtArea(Geo.polygonAreaHa(farm.boundary.points))}); }
     else $('#farm-map-badge').textContent=I18N.t('areaNotCalculated');
+    return farmMap;
   }
   async function updateFarmMap(farm){
     const palms=await DB.palmsForFarm(farm.id);
@@ -110,13 +221,17 @@
     (farm.obstacleZones||[]).forEach(o=>{
       if(o.points&&o.points.length) polys.push({points:o.points,fill:'rgba(232,163,61,.25)',stroke:'#e8a33d',label:o.label||'',dash:[6,4]});
     });
-    const lines=[];
-    if(farm.boundary&&Array.isArray(farm.boundary.path)&&farm.boundary.path.length>=2){
-      lines.push({points:farm.boundary.path,color:'#3b82f6',width:2,dash:[4,3]});
-    }
-    farmMap.setItems({polygons:polys,points,lines});
-    if(!farmMap._fitDone){ farmMap.fit(); farmMap._fitDone=true; }
-  }
+const lines=[];
+     if(farm.boundary&&Array.isArray(farm.boundary.path)&&farm.boundary.path.length>=2){
+       lines.push({points:farm.boundary.path,color:'#3b82f6',width:2,dash:[4,3]});
+     }
+     // farm trail
+     if(FarmTrail.points && FarmTrail.points.length>=2){
+       lines.push({points:FarmTrail.points, color:'#0ea5e9', width:3, dash:[]});
+     }
+     farmMap.setItems({polygons:polys,points,lines});
+     if(!farmMap._fitDone){ farmMap.fit(); farmMap._fitDone=true; }
+   }
 
   // ---------- palms list ----------
   async function renderPalms(farm){
@@ -303,36 +418,17 @@
     }catch(e){ toast(I18N.t('gpsFail')); }
     btn.disabled=false;
   });
-  const TrailUI={
-    _render:0,
-    fmtDur(ms){
-      const s=Math.max(0,Math.round((ms||0)/1000));
-      const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
-      return (h?h+':':'')+(h?String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0');
-    },
-    update(){
-      const startBtn=$('btn-trail-start'), stopBtn=$('btn-trail-stop'), clearBtn=$('btn-trail-clear'), hud=$('map-trail-hud');
-      if(!startBtn) return;
-      const run=!!(window.Trail&&Trail.running);
-      const s=window.Trail&&Trail.session;
-      if(run){ startBtn.textContent='⏺ '+I18N.t('trailActive'); startBtn.disabled=true; stopBtn.hidden=false; }
-      else{ startBtn.textContent='▶ '+I18N.t('trailStart'); startBtn.disabled=false; stopBtn.hidden=true; }
-      stopBtn.textContent='⏹ '+I18N.t('trailStop');
-      clearBtn.textContent='🗑 '+I18N.t('trailClear');
-      const fb=$('btn-map-follow'); if(fb) fb.classList.toggle('on',!!(window.Trail&&Trail.follow));
-      if(hud&&s){
-        if(!run&&(!s.points||!s.points.length)){
-          hud.textContent=I18N.t('trailNoFix');
-        } else {
-          const parts=[I18N.t('trailDist')+': <b>'+s.distance.toFixed(1)+' '+I18N.t('km')+'</b>'];
-          parts.push(I18N.t('trailDur')+': '+this.fmtDur(s.durationMs||(s.start?Date.now()-s.start:0)));
-          if(s.speed!=null) parts.push(I18N.t('trailSpeed')+': <b>'+s.speed.toFixed(0)+' '+(I18N.get()==='ar'?'كم/س':'km/h')+'</b>');
-          if(s.acc!=null&&s.acc>0) parts.push(I18N.t('trailAcc')+': ±'+s.acc+' '+(I18N.get()==='ar'?'م':'m'));
-          hud.innerHTML=parts.join(' · ');
-        }
-      }
-    }
-  };
+const TrailUI={
+     _render:0,
+     update(){
+       const startBtn=$('btn-trail-start'), stopBtn=$('btn-trail-stop'), clearBtn=$('btn-trail-clear');
+       if(!startBtn) return;
+       const run=!!(window.Trail&&Trail.running);
+       if(run){ startBtn.disabled=true; stopBtn.hidden=false; }
+       else{ startBtn.disabled=false; stopBtn.hidden=true; }
+       const fb=$('btn-map-follow'); if(fb) fb.classList.toggle('on',!!(window.Trail&&Trail.follow));
+     }
+   };
   if(window.Trail){
      Trail.setHandler(loc=>{
        if(loc&&areaMap) areaMap.setLocation(loc,Trail.follow);
@@ -344,6 +440,15 @@
      $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
      $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
    }
+   // Farm trail buttons
+   $('#btn-track-route').addEventListener('click',()=>{
+     const bar=$('#farm-trail-bar');
+     if(bar) bar.hidden=false;
+     FarmTrail._updateUI();
+   });
+   $('#btn-farm-trail-start').addEventListener('click',()=>{ FarmTrail.start(); });
+   $('#btn-farm-trail-stop').addEventListener('click',()=>{ FarmTrail.stop(); });
+   $('#btn-farm-trail-clear').addEventListener('click',()=>{ FarmTrail.clear(); });
   $('#btn-map-follow').addEventListener('click',()=>{
     if(window.Trail){
       Trail.follow=!Trail.follow;

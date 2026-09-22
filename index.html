@@ -70,11 +70,19 @@
       <button class="btn btn-outline" id="btn-boundary" data-i18n="drawBoundary"></button>
       <button class="btn btn-outline" id="btn-del-boundary" data-i18n="delBoundary" hidden></button>
       <button class="btn btn-outline" id="btn-obstacle" data-i18n="addObstacle"></button>
+      <button class="btn btn-primary" id="btn-track-route" data-i18n="trackRoute">📍 <span data-i18n="trackRoute"></span></button>
     </div>
 
     <div class="map-wrap">
       <canvas id="farm-map"></canvas>
       <div class="map-badge" id="farm-map-badge"></div>
+    </div>
+    <div id="farm-trail-bar" class="route-panel" hidden>
+      <div class="btn-row wrap">
+        <button class="btn btn-primary" id="btn-farm-trail-start" style="min-height:40px"><span data-i18n="trackRouteStart"></span></button>
+        <button class="btn btn-outline" id="btn-farm-trail-stop" style="min-height:40px"><span data-i18n="trackRouteStop"></span></button>
+        <button class="btn btn-outline" id="btn-farm-trail-clear" style="min-height:40px"><span data-i18n="trackRouteClear"></span></button>
+      </div>
     </div>
 
     <h2 class="section-title" data-i18n="palmsTitle"></h2>
@@ -99,11 +107,10 @@
     </header>
     <div id="map-trail-bar" class="route-panel">
       <div class="btn-row wrap">
-        <button class="btn btn-primary" id="btn-trail-start" style="min-height:40px">▶ </button>
-        <button class="btn btn-outline" id="btn-trail-stop" style="min-height:40px"></button>
-        <button class="btn btn-outline" id="btn-trail-clear" style="min-height:40px"></button>
+        <button class="btn btn-primary" id="btn-trail-start" style="min-height:40px"><span data-i18n="trailStart"></span></button>
+        <button class="btn btn-outline" id="btn-trail-stop" style="min-height:40px"><span data-i18n="trailStop"></span></button>
+        <button class="btn btn-outline" id="btn-trail-clear" style="min-height:40px"><span data-i18n="trailClear"></span></button>
       </div>
-      <div id="map-trail-hud" class="muted small" style="margin-top:6px"></div>
     </div>
     <div class="map-wrap map-full">
       <canvas id="area-map"></canvas>
