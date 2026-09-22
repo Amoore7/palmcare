@@ -152,6 +152,31 @@
       refreshAll();
     });
     $('btn-obstacle').addEventListener('click',()=>{ if(currentFarmId) Flow.Boundary.open(currentFarmId,'obstacle'); });
+
+    // external maps (Google / Apple) for a farm
+    let mapsTarget=null;
+    window.App.openExternalMaps=(farm)=>{
+      if(!farm) return;
+      let la=null, lo=null;
+      if(farm.lat!=null) { la=farm.lat; lo=farm.lng; }
+      else if(farm.boundary&&farm.boundary.points&&farm.boundary.points.length){ la=farm.boundary.points[0].lat; lo=farm.boundary.points[0].lng; }
+      if(la==null){ toast(I18N.t('farmNeedsCoords')); return; }
+      mapsTarget={name:farm.name||'', lat:la, lng:lo};
+      $('#openmaps-title').textContent=(farm.name||'')+' — '+la.toFixed(6)+' , '+lo.toFixed(6);
+      $('#ov-openmaps').hidden=false;
+    };
+    $('btn-map-open') && $('btn-map-open').addEventListener('click',async()=>{
+      if(!currentFarmId) return;
+      window.App.openExternalMaps(await DB.farm(currentFarmId));
+    });
+    $('btn-maps-google').addEventListener('click',()=>{
+      $('ov-openmaps').hidden=true;
+      if(mapsTarget) window.open('https://www.google.com/maps/dir/?api=1&destination='+mapsTarget.lat+','+mapsTarget.lng,'_blank');
+    });
+    $('btn-maps-apple').addEventListener('click',()=>{
+      $('ov-openmaps').hidden=true;
+      if(mapsTarget) window.open('http://maps.apple.com/?daddr='+mapsTarget.lat+','+mapsTarget.lng,'_blank');
+    });
     $('btn-report-pdf').addEventListener('click',()=>{ if(currentFarmId) Reports.renderPrint(currentFarmId); });
     $('btn-report-xlsx').addEventListener('click',()=>{ if(currentFarmId) Reports.exportFarmExcel(currentFarmId); });
     $('btn-whatsapp').addEventListener('click',()=>{ if(currentFarmId) Reports.shareWhatsApp(currentFarmId); });

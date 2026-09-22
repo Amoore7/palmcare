@@ -205,6 +205,13 @@
         <label class="field"><span data-i18n="cloudEndpoint"></span>
           <input type="url" id="set-cloud" placeholder="https://…/api/sync">
         </label>
+        <label class="field"><span data-i18n="googleFormId"></span>
+          <input type="text" id="set-formid" placeholder="1FAIpQLS…" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="field"><span data-i18n="googleFormEntries"></span>
+          <input type="text" id="set-formentries" placeholder='{"1":"entry.1234",…}' autocapitalize="none" spellcheck="false">
+        </label>
+        <p class="muted small" data-i18n="googleFormHint"></p>
         <label class="field"><span data-i18n="tileSource"></span>
           <select id="set-tiles">
             <option value="voyager">CARTO Voyager (بدون مفتاح)</option>
@@ -239,6 +246,18 @@
   </div>
 
   <div class="toast" id="toast" hidden></div>
+
+  <!-- External maps chooser -->
+  <div class="overlay" id="ov-openmaps" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h3 data-i18n="openInMaps"></h3><button class="iconbtn close" data-close>✕</button></div>
+      <p class="muted small" id="openmaps-title"></p>
+      <div class="btn-row wrap">
+        <button class="btn btn-primary btn-big" id="btn-maps-google" data-i18n="mapsGoogle">🗺</button>
+        <button class="btn btn-outline btn-big" id="btn-maps-apple" data-i18n="mapsApple">🗺</button>
+      </div>
+    </div>
+  </div>
 
 </div>
 

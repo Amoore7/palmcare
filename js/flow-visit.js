@@ -242,6 +242,13 @@
     }
     if(!visit.voiceBlob){ delete vis.voiceBlob; }
     await DB.saveVisit(vis);
+    // house report → Google Form: fire-and-forget; never blocks the save.
+    if(window.Sync && window.Sync.formVisitPayload){
+      Sync.submitToGoogleForm(Sync.formVisitPayload(vis, farm)).then(r=>{
+        if(r==='ok') toast(I18N.t('formSubmitted'));
+        else if(r==='queued') toast(I18N.t('formQueued'));
+      }).catch(()=>{});
+    }
     if(disc) toast(disc);
     toast(I18N.t('visitSaved'));
     $('ov-visit').hidden=true;

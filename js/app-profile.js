@@ -22,7 +22,11 @@
       const kv=(a,b)=>el('div',{class:'kv'},[el('b',{},[a]),el('span',{},[b])]);
       info.appendChild(kv(I18N.t('nationalId'),farm.nationalId||'—'));
       info.appendChild(kv(I18N.t('phone'),farm.phone||'—'));
-      if(farm.lat!=null) info.appendChild(kv(I18N.t('lat')+' / '+I18N.t('lng'),farm.lat.toFixed(6)+' , '+farm.lng.toFixed(6)));
+      if(farm.lat!=null){
+      const span=el('span',{},[farm.lat.toFixed(6)+' , '+farm.lng.toFixed(6)]);
+      span.appendChild(el('button',{class:'linkbtn',onclick:()=>window.App.openExternalMaps(farm)},[' 🗺 '+I18N.t('openInMaps')]));
+      info.appendChild(kv(I18N.t('lat')+' / '+I18N.t('lng'),span));
+    }
       info.appendChild(kv(I18N.t('registeredCount'),String(farm.registeredCount||0)));
       info.appendChild(kv(I18N.t('areaNotCalculated'), farm.boundary? Geo.fmtArea(Geo.polygonAreaHa(farm.boundary.points))+' '+I18N.t('ha') : '—'));
       const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},['✏️ '+I18N.t('editFarm')]);
@@ -197,7 +201,14 @@
         } else {
           routeText=I18N.t('noPending');
         }
-        if(routeText) $('map-route-inline').innerHTML=routeText;
+        if($('map-route-inline')) $('map-route-inline').innerHTML=routeText;
+        if(nearest){
+          const rp=$('map-route-inline');
+          if(rp){
+            const gotoBtn=el('button',{class:'btn btn-outline small',id:'btn-route-maps',onclick:()=>window.App.openExternalMaps(nearest)},['🗺 '+I18N.t('routeDir')]);
+            rp.appendChild(gotoBtn);
+          }
+        }
       }
       // legend: which farm owns which boundary
       const bounded=farms.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
@@ -302,6 +313,8 @@
       $('#set-mismatch').value=s.mismatchM||'500';
       $('#set-walkm').value=s.walkM||'8';
       $('#set-notify').checked=s.notifications!==false;
+      $('#set-formid').value=s.googleFormId||'';
+      $('#set-formentries').value=s.googleFormEntryMap||'';
     },
     open(){
       Settings.loadValues();
@@ -339,6 +352,24 @@
   $('#set-mismatch').addEventListener('change',e=>DB.setSetting('mismatchM',e.target.value));
   $('#set-walkm').addEventListener('change',e=>DB.setSetting('walkM',e.target.value));
   $('#set-notify').addEventListener('change',e=>DB.setSetting('notifications',e.target.checked));
+  $('#set-formid').addEventListener('change',e=>{
+    DB.setSetting('googleFormId',e.target.value.trim());
+    window.Sync.setFormConfig(e.target.value.trim(), parseEntries($('#set-formentries').value));
+    toast(e.target.value.trim()?I18N.t('formSubmitted'):'');
+  });
+  $('#set-formentries').addEventListener('change',e=>{
+    const ent=parseEntries(e.target.value);
+    window.Sync.setFormConfig($('#set-formid').value.trim(), ent);
+  });
+  function parseEntries(str){
+    const s=String(str||'').trim();
+    if(!s) return null;
+    try{
+      const o=JSON.parse(s);
+      if(o&&typeof o==='object') return o;
+    }catch(err){}
+    return null;
+  }
 
   window.App.Profile=Profile;
   window.App.AreaMap=AreaMap;
