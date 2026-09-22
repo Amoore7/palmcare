@@ -1,5 +1,5 @@
 /* PalmCare Service Worker — offline-first app shell + cached raster tiles */
-const VERSION='palmcare-v14';
+const VERSION='palmcare-v15';
 const PRECACHE='palmcare-precache-'+VERSION;
 const TILES_CACHE='palmcare-tiles-v2';
 const PRECACHE_URLS=[
