@@ -168,7 +168,8 @@
 
   // ================= AREA MAP =================
   const AreaMap={
-    async render(){
+     selectedRouteFarm: null,
+     async render(){
       const vv=$('view-map');
       if(vv&&vv.hidden){ if(typeof TrailUI!=='undefined'&&TrailUI) TrailUI.update(); return; }
       const canvas=$('area-map');
@@ -233,36 +234,63 @@
           }
         }
       }
-      // current trip trail (persisted breadcrumb of where we actually drove)
-      const tr=window.Trail&&Trail.session;
-      if(tr && tr.points && tr.points.length>=2){
-        line.push({points:tr.points.map(p=>({lat:p.lat,lng:p.lng})),color:'#0ea5e9',width:3,dash:[]});
-      }
-      // legend: which farm owns which boundary
-      const bounded=active.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
-      const leg=$('map-legend');
-      if(leg){
-        leg.innerHTML='';
-        leg.appendChild(el('h3',{class:'section-title'},[I18N.t('boundaries')+' ('+bounded.length+')']));
-        if(!bounded.length){
-          leg.appendChild(el('p',{class:'muted small'},[I18N.t('noBoundaries')]));
-        } else {
-          bounded.forEach(f=>{
-            const col=colorOf.get(f.id);
-            leg.appendChild(el('button',{class:'legend-row',onclick:()=>window.App.goto('farm',f.id)},[
-              el('span',{class:'dot',style:'background:'+col}),
-              el('span',{},[f.name||'—']),
-              el('b',{},[Geo.fmtArea(Geo.polygonAreaHa(f.boundary.points))+' '+I18N.t('ha')])
-            ]));
-          });
-        }
-      }
+// current trip trail (persisted breadcrumb of where we actually drove)
+       const tr=window.Trail&&Trail.session;
+       if(tr && tr.points && tr.points.length>=2){
+         line.push({points:tr.points.map(p=>({lat:p.lat,lng:p.lng})),color:'#0ea5e9',width:3,dash:[]});
+       }
+       // selected farm route line
+       if(AreaMap.selectedRouteFarm && last && AreaMap.selectedRouteFarm.lat!=null){
+         const f=AreaMap.selectedRouteFarm;
+         const d=Geo.distM(last,f);
+         const bear=Geo.bearingDeg(last,{lat:f.lat,lng:f.lng});
+         line.push({points:[last,{lat:f.lat,lng:f.lng}],color:'#0ea5e9',width:3,dash:[6,4]});
+         if($('map-route-inline')){
+           $('map-route-inline').innerHTML='<b>'+I18N.t('routeTo',{name:f.name})+':</b> '+f.name+' — '+Geo.fmtDist(d)+' — '+I18N.t('bearing')+': '+I18N.t('directions')[Geo.dirLabel(bear)];
+           const clearBtn=el('button',{class:'btn btn-outline small',onclick:()=>{ AreaMap.selectedRouteFarm=null; AreaMap.render(); }},['✕ '+I18N.t('clear')]);
+           $('map-route-inline').appendChild(clearBtn);
+         }
+         // enable follow mode and center on route
+         if(window.Trail && !Trail.follow){
+           Trail.follow=true;
+           const b=$('btn-map-follow'); if(b)b.classList.add('on');
+         }
+         if(areaMap){
+           const midLat=(last.lat+f.lat)/2;
+           const midLng=(last.lng+f.lng)/2;
+           areaMap.setCenter({lat:midLat,lng:midLng});
+           areaMap.setZoom(14);
+         }
+       }
+       // legend: which farm owns which boundary
+       const bounded=active.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
+       const leg=$('map-legend');
+       if(leg){
+         leg.innerHTML='';
+         leg.appendChild(el('h3',{class:'section-title'},[I18N.t('boundaries')+' ('+bounded.length+')']));
+         if(!bounded.length){
+           leg.appendChild(el('p',{class:'muted small'},[I18N.t('noBoundaries')]));
+         } else {
+           bounded.forEach(f=>{
+             const col=colorOf.get(f.id);
+             leg.appendChild(el('button',{class:'legend-row',onclick:()=>{ AreaMap.selectRouteFarm(f); }},[
+               el('span',{class:'dot',style:'background:'+col}),
+               el('span',{},[f.name||'—']),
+               el('b',{},[Geo.fmtArea(Geo.polygonAreaHa(f.boundary.points))+' '+I18N.t('ha')])
+             ]));
+           });
+         }
+}
       areaMap.setItems({polygons:polys,points,lines:line.concat(traceLines)});
-      if(!areaMap._fitDone){ areaMap.fit(); areaMap._fitDone=true; }
-      $('#area-map-badge').textContent=I18N.t('allFarms')+': '+active.length+' · '+I18N.t('boundaries')+': '+bounded.length;
-      TrailUI.update();
-    }
-  };
+       if(!areaMap._fitDone){ areaMap.fit(); areaMap._fitDone=true; }
+       $('#area-map-badge').textContent=I18N.t('allFarms')+': '+active.length+' · '+I18N.t('boundaries')+': '+bounded.length;
+       TrailUI.update();
+     },
+     selectRouteFarm(farm){
+       AreaMap.selectedRouteFarm=farm;
+       AreaMap.render().catch(()=>{});
+     }
+   };
   $('#btn-map-locate').addEventListener('click',async()=>{
     const btn=$('btn-map-locate');
     btn.disabled=true;
@@ -306,16 +334,16 @@
     }
   };
   if(window.Trail){
-    Trail.setHandler(loc=>{
-      if(loc&&areaMap) areaMap.setLocation(loc,Trail.follow);
-      const now=Date.now();
-      if(now-TrailUI._render>1100){ TrailUI._render=now; TrailUI.update(); AreaMap.render().catch(()=>{}); }
-      else TrailUI.update();
-    });
-    $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); });
-    $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); });
-    $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
-  }
+     Trail.setHandler(loc=>{
+       if(loc&&areaMap) areaMap.setLocation(loc,Trail.follow);
+       const now=Date.now();
+       if(now-TrailUI._render>1100){ TrailUI._render=now; TrailUI.update(); AreaMap.render().catch(()=>{}); }
+       else TrailUI.update();
+     });
+     $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); AreaMap.render().catch(()=>{}); });
+     $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
+     $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
+   }
   $('#btn-map-follow').addEventListener('click',()=>{
     if(window.Trail){
       Trail.follow=!Trail.follow;
