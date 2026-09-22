@@ -148,7 +148,7 @@
       if(!str) return null;
       str=str.replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
       str=str.replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c)));
-      str=str.replace(/٫/g,'.').replace(/،/g,'.');
+      str=str.replace(/٫/g,'.').replace(/،/g,'.').replace(/,/g,' ');
       str=str.replace(/°|º/g,' ');
       str=str.trim();
       return isFinite(parseFloat(str))?parseFloat(str):null;

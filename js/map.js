@@ -15,23 +15,57 @@
   let tileTemplate=null;   // user override (set from Settings)
   let sourceIndex=0;
   let tileFails=0, fellBack=false, srcVersion=0;
+  // "effectively offline": network present but actually failing (wifi w/o internet) OR
+  // navigator flagged offline. While set, the map relies on local/cached tiles and probes
+  // periodically to auto-recover when connectivity really returns.
+  let effectivelyOffline=!navigator.onLine;
+  let probeTimer=null;
   const MAPS=new Set();
 
   function getTemplate(){
-    if(!navigator.onLine) return LOCAL_TILES;
+    if(effectivelyOffline||!navigator.onLine) return LOCAL_TILES;
     return tileTemplate||TILE_SOURCES[sourceIndex];
   }
+  function enterOffline(){
+    if(effectivelyOffline) return;
+    effectivelyOffline=true;
+    redrawAll();
+    scheduleProbe();
+    try{
+      if(window.FlowUtil&&window.FlowUtil.toast) window.FlowUtil.toast(I18N&&I18N.t?I18N.t('offlineEnter'):'offline');
+    }catch(e){}
+  }
+  function reconnect(){
+    effectivelyOffline=false; tileFails=0;
+    redrawAll();
+  }
+  function scheduleProbe(){
+    if(probeTimer) return;
+    probeTimer=setTimeout(runProbe,20000);
+  }
+  async function runProbe(){
+    probeTimer=null;
+    try{
+      const base=tileTemplate||TILE_SOURCES[0];
+      const url=base.replace('{z}','7').replace('{x}','63').replace('{y}','42');
+      const resp=await fetch(url,{mode:'cors',cache:'no-store'});
+      if(resp&&resp.ok){ reconnect(); return; }
+    }catch(e){}
+    scheduleProbe();
+  }
   function onTileFail(){
-    if(!navigator.onLine) return;            // offline: keep grid, no source churn
+    if(effectivelyOffline) return;     // offline: keep grid, no source churn
+    if(!navigator.onLine){ enterOffline(); return; }
     tileFails++;
     if(tileFails<3) return;
     tileFails=0;
     if(tileTemplate){
-      tileTemplate=null;                     // custom/preset failed -> drop to default chain
+      tileTemplate=null;               // custom/preset failed -> drop to default chain
       srcVersion++; notifyFallback(); redrawAll();
       return;
     }
     if(sourceIndex<TILE_SOURCES.length-1){ sourceIndex++; srcVersion++; notifyFallback(); redrawAll(); }
+    else enterOffline();               // every network source failed -> rely on local/cache + probe
   }
   function redrawAll(){ MAPS.forEach(m=>m.render()); }
   function onTileOk(){ tileFails=0; }
@@ -43,22 +77,32 @@
     }catch(e){}
   }
 
-  async function getImage(url, usedTemplate){
+  async function getImage(url, usedTemplate, key){
     try{
       if(!('caches' in window)) return null;
+      const offline = effectivelyOffline || !navigator.onLine;
       const cache=await caches.open(TILE_CACHE);
       let resp=await cache.match(url);
-      if(!resp && navigator.onLine){
+      // offline: also try local packaged tiles and any previously cached network source
+      if(!resp && offline && key){
+        resp = await cache.match(key);                       // local ./tiles/*
+        if(!resp){
+          const base=tileTemplate||TILE_SOURCES[0];
+          const alt=base.replace('{z}',key.split('/')[0]).replace('{x}',key.split('/')[1]).replace('{y}',key.split('/')[2]);
+          resp=await cache.match(alt);                       // previously cached network tile
+        }
+      }
+      if(!resp && navigator.onLine && !offline){
         try{
           resp=await fetch(url);
           if(resp && resp.ok) await cache.put(url, resp.clone());
         }catch(e){ resp=null; }
       }
       if(!resp || !resp.ok){
-        if(usedTemplate===getTemplate()) onTileFail();
+        if(usedTemplate===getTemplate() && !offline) onTileFail();
         return null;
       }
-      if(navigator.onLine) onTileOk();
+      if(navigator.onLine && !offline) onTileOk();
       const blob=await resp.blob();
       return URL.createObjectURL(blob);
     }catch(e){ return null; }
@@ -249,7 +293,7 @@
       }
       this._tileToks[key]={url,sx,sy,key};
       const self=this;
-      getImage(url, usedTemplate).then(function(obj){
+      getImage(url, usedTemplate, key).then(function(obj){
         if(!obj) return;
         const im=new Image();
         im.onload=function(){ self._tileToks[key].img=im; self._tilesOk++; self.render(); URL.revokeObjectURL(obj); };
@@ -386,7 +430,16 @@
     try{ self.ctx.drawImage(img,sx,sy,256,256); }catch(e){}
   }
 
+  window.addEventListener('offline',function(){ enterOffline(); });
+  window.addEventListener('online',function(){ scheduleProbe(); });
+
   window.GeoMap=GeoMap;
   window.GeoMap.setTileTemplate=function(t){ tileTemplate=(t&&t.trim())?t.trim():null; };
   window.GeoMap.getTemplate=getTemplate;
+  // test hooks
+  window.GeoMap.detectState=function(){ return effectivelyOffline||!navigator.onLine; };
+  window.GeoMap.enterOffline=enterOffline;
+  window.GeoMap.reconnect=reconnect;
+  window.GeoMap.probeNow=function(){ scheduleProbe(); runProbe(); };
+  window.GeoMap.simulateOnline=function(){ reconnect(); };   // force recover in tests
 })();

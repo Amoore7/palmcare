@@ -2,15 +2,15 @@
   const REQUIRED=['name','nationalId','phone','lat','lng','registeredCount'];
 
   const KEYWORDS = {
-    name:['اسم','الاسم','مزارع','الفلاح','اسم المزارع'.toLowerCase(),'name','farmer'],
-    nationalId:['هوية','رقم الهوية','بطاقة','سجل مدني','national','nationalid','id'],
-    phone:['جوال','رقم الجوال','هاتف','mobile','phone','telefon'],
-    lat:['خط العرض','عرض','latitude','lat','lat1'],
-    lng:['خط الطول','طول','longitude','long','lon','lng','lng1'],
+    name:['اسم','الاسم','اسم المزرعة','اسم المزرعه','اسم المزارع','اسم المزراع','الاسم الكامل','المزرعة','المزرعه','مزرعة','مزرعه','المزارع','المزارعه','المستفيد','اسم المستفيد','اسم رب الاسره','الفلاح','أسم','أسم المزرعه','أسم المزرعة','farm','farmer','farname','name'],
+    nationalId:['هوية','رقم الهوية','رقم الهويه','سجل مدني','سجل','الرقم الوطني','رقم السجل','بطاقة','الوطني','national','nationalid','id'],
+    phone:['جوال','رقم الجوال','رقم الهاتف','هاتف','موبايل','رقم الموبايل','mobile','phone','telefon','tel'],
+    lat:['خط العرض','احداثيات','احداثيه','احداثية','احداثي','احداثية','احداثيات','coordinates','coords','coord','latitude','lat','lat1','x'],
+    lng:['خط الطول','احداثيات','احداثيه','احداثية','احداثي','احداثية','احداثيات','coordinates','coords','coord','longitude','long','lon','lng','lng1','y'],
     registeredCount:['عدد النخيل','عدد','النخيل','العدد','count','num','nr']
   };
 
-  function norm(s){ return String(s||'').trim().replace(/^\uFEFF/,'').replace(/\s+/g,' ').toLowerCase(); }
+  function norm(s){ return String(s||'').trim().replace(/^\uFEFF/,'').replace(/\s+/g,' ').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه'); }
 
   // SheetJS reads plain-text cells passed as bytes; UTF-8 CSV without BOM can
   // come back as one Latin-1 char per byte (mojibake). Re-decode such strings.
@@ -55,8 +55,22 @@
     const name=String(cell('name')||'').trim();
     const nationalId=String(cell('nationalId')||'').trim();
     const phone=String(cell('phone')||'').trim();
-    const lat=Geo.parseCoord(cell('lat'));
-    const lng=Geo.parseCoord(cell('lng'));
+    // a single combined "coordinates" column (e.g. '24.71,46.67' or '24.71 46.67')
+    // mapped to BOTH lat & lng: split the two numbers regardless of how parseCoord reads it.
+    if(map.lat!=null && map.lat===map.lng && row[map.lat]!=null){
+      const nums=String(row[map.lat]).trim().match(/-?\d+(?:\.\d+)?/g);
+      if(nums && nums.length>=2){ map.splitCoords=true; }
+    }
+    let lat=Geo.parseCoord(cell('lat'));
+    let lng=Geo.parseCoord(cell('lng'));
+    if(map.splitCoords){
+      const raw=String(row[map.lat]!=null?row[map.lat]:'').trim();
+      const nums=raw.match(/-?\d+(?:\.\d+)?/g);
+      if(nums){
+        if(nums[0]!=null) lat=parseFloat(nums[0]);
+        if(nums[1]!=null) lng=parseFloat(nums[1]);
+      }
+    }
     const registeredCount=parseInt(String(cell('registeredCount')||'').replace(/[^0-9]/g,''),10)||0;
     const flags=[];
     if(!lat || !lng) flags.push('noCoords');
@@ -65,18 +79,32 @@
     return {name, nationalId, phone, lat, lng, registeredCount, flags};
   }
 
-  function readRowsFromBuffer(buf){
-    const wb=XLSX.read(new Uint8Array(buf), {type:'array', cellDates:false});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
-  }
-
   async function parseFile(file){
     const buf=await readFileBuffer(file);
-    const rows=readRowsFromBuffer(buf);
+    const u8=new Uint8Array(buf);
+    const isCsv=/\.csv$/i.test(file.name||'');
+    let rows;
+    if(isCsv){
+      // Excel often exports CSVs as UTF-16 or UTF-8 variants; SheetJS cannot read these
+      // reliably from bytes, so decode to a JS string first and let SheetJS re-parse it.
+      let text;
+      if(u8.length>=2 && ((u8[0]===0xFF&&u8[1]===0xFE)||(u8[0]===0xFE&&u8[1]===0xFF))){
+        const le=!(u8[0]===0xFE&&u8[1]===0xFF);           // UTF-16 BOM
+        text=new TextDecoder(le?'utf-16le':'utf-16be').decode(u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength));
+      } else {
+        text=new TextDecoder('utf-8').decode(u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength));
+      }
+      const wb=XLSX.read(text,{type:'string', cellDates:false});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+    } else {
+      const wb=XLSX.read(u8,{type:'array', cellDates:false});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+    }
     if(!rows || !rows.length) throw new Error('empty');
-    const headers=rows[0].map(function(s){ return unmangle(String(s)); });
-    const data=rows.slice(1).map(r=>r.map(c=>unmangle(String(c)))).filter(r=>r.some(c=>String(c).trim()!==''));
+    const headers=(rows[0]||[]).map(s=>unmangle(String(s)));
+    const data=rows.slice(1).map(r=>(r||[]).map(c=>unmangle(String(c)))).filter(r=>r.some(c=>String(c).trim()!==''));
     return {file, headers, data};
   }
 

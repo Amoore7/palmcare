@@ -31,17 +31,27 @@
       return;
     }
     $('#import-progress').hidden=true;
-    // reuse previous mapping if headers identical
+    // reuse previous mapping only if headers identical AND it actually finds names
     const saved=await DB.getSetting('columnMapping',null);
     const savedHdr=await DB.getSetting('columnMappingHeader',null);
     let map=null;
     if(saved){
       const same = savedHdr && Array.isArray(savedHdr) && pending.headers.length===savedHdr.length &&
         pending.headers.every((x,i)=>String(x)===String(savedHdr[i]));
-      if(same) map=saved;
+      if(same && mappingYieldsNames(saved,pending.data)) map=saved;
     }
     if(!map) map=ExcelUtil.autodetect(pending.headers);
     prepare(map);
+  }
+
+  function mappingYieldsNames(map, data){
+    const samples=data.slice(0,8);
+    return samples.some(r=>{
+      try{
+        const f=ExcelUtil.buildFarmFromRow(r,map);
+        return !!f.name && /[A-Za-z\u0621-\u064A\u0660-\u0669]/.test(String(f.name)); // reject digit-only fabrications
+      }catch(e){ return false; }
+    });
   }
 
   function prepare(map){
@@ -73,6 +83,11 @@
         ul.appendChild(el('div',{class:'small'},['#Row '+sk.row+' — '+(sk.nationalId?('| '+sk.nationalId):'')+((sk.phone)?(' | 📞'+sk.phone):'')]));
       });
       warn.appendChild(ul);
+    }
+    if(imported===0){
+      warn.classList.add('red');
+      warn.appendChild(el('div',{class:'small'},[I18N.t('noNameHint')]));
+      warn.appendChild(el('div',{class:'small muted'},[I18N.t('detectedHeaders')+': '+pending.headers.join(' | ')]));
     }
     $('#import-progress').textContent=I18N.t('importedRows',{n:String(imported)})+ (skipped.length?(' · '+I18N.t('importSkipped')+': '+skipped.length):'');
     const btn=$('#btn-import-confirm');
