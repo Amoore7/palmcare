@@ -4,7 +4,7 @@
   const {toast}=window.FlowUtil;
 
   let visit=null;
-  const STEPS=6;
+  const STEPS=7;
 
   async function farmName(id){ const f=await DB.farm(id); return f?f.name:'—'; }
 
@@ -12,7 +12,7 @@
     $('ov-visit').hidden=false;
     visit={
       farmId: farmId||null,
-      gps:null, actualCount:null, obstacles:[], note:'', voiceBlob:null, palms:[]
+      gps:null, actualCount:null, fTreatment:null, obstacles:[], note:'', voiceBlob:null, palms:[]
     };
     try{
       await renderStep(0);
@@ -36,9 +36,10 @@
     if(step===0) ok=await stepFarm();
     else if(step===1) ok=await stepGps();
     else if(step===2) ok=await stepCount();
-    else if(step===3) ok=await stepObstacles();
-    else if(step===4) ok=await stepPalms();
-    else if(step===5){ await stepSave(); ok=true; next.hidden=false; next.textContent=I18N.t('saveVisit'); }
+    else if(step===3) ok=await stepTreatment();
+    else if(step===4) ok=await stepObstacles();
+    else if(step===5) ok=await stepPalms();
+    else if(step===6){ await stepSave(); ok=true; next.hidden=false; next.textContent=I18N.t('saveVisit'); }
     next.disabled=!ok;
   }
 
@@ -153,6 +154,39 @@
     return true;
   }
 
+  async function stepTreatment(){
+    const body=$('visit-body');
+    const farm=visit.farmId?await DB.farm(visit.farmId):null;
+    const base=visit.actualCount!=null?visit.actualCount:((farm&&farm.registeredCount)||0);
+    const st=visit.fTreatment||{treatedPalms:base||0, phosphidePerPalm:5};
+    visit.fTreatment=st;
+    const phInp=el('input',{type:'number',min:'0',value:st.treatedPalms});
+    const perInp=el('input',{type:'number',min:'0',value:st.phosphidePerPalm!=null?st.phosphidePerPalm:5});
+    const totPh=el('b',{},['0']);
+    const fibP=el('input',{type:'number',min:'0',value:st.fibrolPalms!=null?st.fibrolPalms:''});
+    const fibM=el('input',{type:'number',min:'0',value:st.fibrolMl!=null?st.fibrolMl:''});
+    const calc=()=>{
+      st.treatedPalms=parseInt(phInp.value,10)||0;
+      st.phosphidePerPalm=parseInt(perInp.value,10)||0;
+      totPh.textContent=String(st.treatedPalms*st.phosphidePerPalm);
+    };
+    phInp.addEventListener('input',calc); perInp.addEventListener('input',calc);
+    fibP.addEventListener('input',()=>{ st.fibrolPalms=parseInt(fibP.value,10)||null; });
+    fibM.addEventListener('input',()=>{ st.fibrolMl=parseInt(fibM.value,10)||null; });
+    calc();
+    const form=el('div',{class:'form'},[
+      el('h4',{class:'section-title'},[I18N.t('treatment')]),
+      el('div',{class:'warnbox green'},[I18N.t('treatmentHint')]),
+      el('label',{class:'field'},[el('span',{},[I18N.t('treatedPalms')]),phInp]),
+      el('label',{class:'field'},[el('span',{},[I18N.t('phosphidePerPalm')]),perInp]),
+      el('div',{class:'kv'},[el('b',{},[I18N.t('phosphideTotal')]),totPh]),
+      el('h4',{class:'section-title'},[I18N.t('fibrol')+' ('+I18N.t('optional')+')']),
+      el('div',{class:'field two'},[el('label',{class:'field'},[el('span',{},[I18N.t('fibrolPalms')]),fibP]),el('label',{class:'field'},[el('span',{},[I18N.t('fibrolMl')]),fibM])])
+    ]);
+    body.appendChild(form);
+    return true;
+  }
+
   async function stepObstacles(){
     const body=$('visit-body');
     const chosen={};
@@ -211,6 +245,8 @@
       el('div',{class:'kv'},[el('b',{},[I18N.t('registeredCount')]),el('span',{},[farm.registeredCount||0])]),
       el('div',{class:'kv'},[el('b',{},[I18N.t('actualCount')]),el('span',{},[visit.actualCount!=null?visit.actualCount:'—'])]),
       el('div',{class:'kv'},[el('b',{},[I18N.t('obstacles')]),el('span',{},[(visit.obstacles&&visit.obstacles.length)?visit.obstacles.join('، '):I18N.t('noObstacles')])]),
+      el('div',{class:'kv'},[el('b',{},[I18N.t('phosphideTotal')]),el('span',{},[(visit.fTreatment&&visit.fTreatment.treatedPalms*visit.fTreatment.phosphidePerPalm)?String(visit.fTreatment.treatedPalms*visit.fTreatment.phosphidePerPalm):'—'])]),
+      el('div',{class:'kv'},[el('b',{},[I18N.t('fibrol')]),el('span',{},[(visit.fTreatment&&visit.fTreatment.fibrolPalms)?(visit.fTreatment.fibrolPalms+' 🌴 · '+((visit.fTreatment.fibrolMl||0))+' ml'):I18N.t('noFibrol')])]),
       el('div',{class:'kv'},[el('b',{},[I18N.t('addPalm')]),el('span',{},[String(visit.palms.length)])])
     ]);
     body.appendChild(card);
@@ -235,6 +271,8 @@
       palmIds:visit.palms.map(p=>p.id),
       batchId:farm.lastBatchId||null
     };
+    const ft=visit.fTreatment;
+    if(ft && (ft.treatedPalms||ft.fibrolPalms||ft.fibrolMl)) vis.fTreatment=ft;
     visit.palms.forEach(p=>{ p.visitId=vid; });
     for(const p of visit.palms){
       if(!p.nextInspectionDate && p.treatmentDate) p.nextInspectionDate=new Date(p.treatmentDate).getTime()+5*86400000;

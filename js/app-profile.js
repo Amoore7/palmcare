@@ -136,6 +136,7 @@
         ])
       ]);
       if(v.discrepancyNote) item.appendChild(el('div',{class:'warnbox small'},[v.discrepancyNote]));
+      if(v.fTreatment && (v.fTreatment.treatedPalms||v.fTreatment.fibrolPalms)) item.appendChild(el('div',{class:'muted small'},['💊 '+I18N.t('phosphideTotal')+': <b>'+String(v.fTreatment.treatedPalms*(v.fTreatment.phosphidePerPalm||0))+'</b>'+(v.fTreatment.fibrolPalms?(' · '+I18N.t('fibrol')+': '+String(v.fTreatment.fibrolPalms)+' 🌴 · '+String(v.fTreatment.fibrolMl||0)+' ml'):'')]));
       if(v.obstacles&&v.obstacles.length){ const tags=el('div',{},[v.obstacles.map(t=>el('span',{class:'tag'},[t]))]); item.appendChild(tags); }
       if(v.note) item.appendChild(el('div',{class:'muted small'},['📝 '+v.note]));
       if(v.gps&&v.gps.lat!=null){ const d=farm.lat!=null?Geo.fmtDist(Geo.distM(v.gps,farm)):''; item.appendChild(el('div',{class:'muted small'},['📍 '+v.gps.lat.toFixed(5)+','+v.gps.lng.toFixed(5)+(d?' · '+d:'')])); }

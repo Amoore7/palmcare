@@ -12,7 +12,7 @@
       else n.setAttribute(k,props[k]);
     }
     const kids=(children==null)?[]:(Array.isArray(children)?children:[children]);
-    kids.forEach(c=>{ if(c!=null) n.appendChild(typeof c==='string'?document.createTextNode(c):c); });
+    kids.forEach(c=>{ if(c!=null) n.appendChild(typeof c==='string'||typeof c==='number'?document.createTextNode(String(c)):c); });
     return n;
   }
   window.Util={h,el};

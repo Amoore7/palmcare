@@ -211,6 +211,8 @@
   function formVisitPayload(vis, farm){
     const palms=vis.palmIds||[];
     const infested=palms.length;
+    const ft=vis.fTreatment;
+    const phosphide=ft&&ft.treatedPalms?ft.treatedPalms*(ft.phosphidePerPalm||0):(infested?infested*5:null);
     const d=new Date(vis.date);
     const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
     return {
@@ -223,9 +225,9 @@
       exitTime: vis.exitTime?vis.exitTime:vis.entryTime||hh+':'+mm,
       registeredCount: vis.registeredCount!=null?vis.registeredCount:(farm?farm.registeredCount:null),
       actualCount: vis.actualCount,
-      // phosphide default: 5 tablets per infested palm; fibrol in ml (numeric inputs later)
-      phosphideTablets: infested?infested*5:null,
-      fibrolMl: null,
+      // phosphide: 5 tablets per treated palm by default, editable per visit; fibrol optional in ml
+      phosphideTablets: phosphide!==null?String(phosphide):'',
+      fibrolMl: ft&&ft.fibrolMl!=null?String(ft.fibrolMl):'',
       infested,
       obstacles: (vis.obstacles||[]).join('، '),
       note: vis.note||'',
