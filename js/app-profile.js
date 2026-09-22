@@ -170,6 +170,7 @@
   const AreaMap={
     async render(){
       const canvas=$('area-map');
+      if(areaMap){ try{ areaMap.resize(); }catch(e){} }   // ensure non-zero size once visible
       if(!areaMap){
         areaMap=new GeoMap(canvas,{center:{lat:24.7,lng:46.7},zoom:11,tiles:true});
         AreaMap.instance=areaMap;

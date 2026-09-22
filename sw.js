@@ -1,5 +1,5 @@
 /* PalmCare Service Worker — offline-first app shell + cached raster tiles */
-const VERSION='palmcare-v9';
+const VERSION='palmcare-v10';
 const PRECACHE='palmcare-precache-'+VERSION;
 const TILES_CACHE='palmcare-tiles-v2';
 const PRECACHE_URLS=[
@@ -48,10 +48,13 @@ self.addEventListener('activate',e=>{
 self.addEventListener('fetch',e=>{
   const url=new URL(e.request.url);
 
-  // cross-origin: pass through, never block (tile requests network-first with cache fallback)
+  // cross-origin: pass through, never block (tile requests network-first with cache
+  // fallback). Every fetch is time-boxed: on mobile "Wi-Fi without internet" keeps
+  // navigator.onLine true while each tile hangs for 30-90s, freezing the map. Abort
+  // after 4s and fall back to cache / error so the UI keeps responding.
   if(url.origin!==location.origin){
     e.respondWith(
-      fetch(e.request).then(resp=>{
+      timedFetch(e.request).then(resp=>{
         if(resp && resp.ok){
           const copy=resp.clone();
           caches.open(TILES_CACHE).then(c=>c.put(e.request,copy)).catch(()=>{});
@@ -65,7 +68,7 @@ self.addEventListener('fetch',e=>{
   // navigations: network-first, offline fallback to cached shell
   if(e.request.mode==='navigate'){
     e.respondWith(
-      fetch(e.request).catch(()=>caches.match('./index.html').then(r=>r||caches.match('./offline.html')))
+      timedFetch(e.request).catch(()=>caches.match('./index.html').then(r=>r||caches.match('./offline.html')))
     );
     return;
   }
@@ -73,7 +76,7 @@ self.addEventListener('fetch',e=>{
   // static assets: cache-first (stale-while-revalidate keeps it fresh)
   e.respondWith(
     caches.match(e.request).then(cached=>{
-      const network=fetch(e.request).then(resp=>{
+      const network=timedFetch(e.request,2000).then(resp=>{
         if(resp && resp.status===200){
           const copy=resp.clone();
           caches.open(PRECACHE).then(c=>c.put(e.request,copy)).catch(()=>{});
@@ -84,3 +87,13 @@ self.addEventListener('fetch',e=>{
     })
   );
 });
+
+function timedFetch(request, ms){
+  const timeout=ms||4000;
+  const ctrl=('AbortController' in self)?new AbortController():null;
+  let timer=null;
+  if(ctrl){ timer=setTimeout(()=>ctrl.abort(), timeout); }
+  const p=fetch(request, ctrl?{signal:ctrl.signal}:{});
+  if(timer){ p.then(()=>clearTimeout(timer),()=>clearTimeout(timer)); }
+  return p;
+}

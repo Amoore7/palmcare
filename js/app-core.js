@@ -26,7 +26,7 @@
     }
     if(view==='home') App.Home.render();
     else if(view==='farms') App.Farms.render();
-    else if(view==='map') App.AreaMap.render();
+    else if(view==='map'){ App.AreaMap.render(); const m=App.AreaMap&&App.AreaMap.instance; if(m&&typeof m.resize==='function') m.resize(); }
     else if(view==='stats') App.Stats.render();
     else if(view==='farm') App.Profile.render(farmId);
   }
@@ -366,6 +366,6 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.4'};
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.5'};
   document.addEventListener('DOMContentLoaded',init);
 })();

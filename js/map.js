@@ -20,11 +20,21 @@
   // periodically to auto-recover when connectivity really returns.
   let effectivelyOffline=!navigator.onLine;
   let probeTimer=null;
+  let timeoutStreak=0;
   const MAPS=new Set();
 
   function getTemplate(){
     if(effectivelyOffline||!navigator.onLine) return LOCAL_TILES;
     return tileTemplate||TILE_SOURCES[sourceIndex];
+  }
+  function timedFetch(url, opts, ms){
+    const timeout=ms||5000;
+    const ctrl=('AbortController' in window)?new AbortController():null;
+    let timer=null;
+    if(ctrl){ timer=setTimeout(function(){ ctrl.abort(); }, timeout); }
+    const p=fetch(url, Object.assign({}, opts||{}, ctrl?{signal:ctrl.signal}:{}));
+    if(timer){ p.then(function(){ clearTimeout(timer); },function(){ clearTimeout(timer); }); }
+    return p;
   }
   function enterOffline(){
     if(effectivelyOffline) return;
@@ -36,7 +46,7 @@
     }catch(e){}
   }
   function reconnect(){
-    effectivelyOffline=false; tileFails=0;
+    effectivelyOffline=false; tileFails=0; timeoutStreak=0;
     redrawAll();
   }
   function scheduleProbe(){
@@ -48,7 +58,7 @@
     try{
       const base=tileTemplate||TILE_SOURCES[0];
       const url=base.replace('{z}','7').replace('{x}','63').replace('{y}','42');
-      const resp=await fetch(url,{mode:'cors',cache:'no-store'});
+      const resp=await timedFetch(url,{mode:'cors',cache:'no-store'},4000);
       if(resp&&resp.ok){ reconnect(); return; }
     }catch(e){}
     scheduleProbe();
@@ -68,7 +78,13 @@
     else enterOffline();               // every network source failed -> rely on local/cache + probe
   }
   function redrawAll(){ MAPS.forEach(m=>m.render()); }
-  function onTileOk(){ tileFails=0; }
+  function onTileOk(){ tileFails=0; timeoutStreak=0; }
+  // timeouts (AbortError) are a strong, fast signal of dead connectivity (wifi w/o net):
+  // two of them in a row -> skip the rest of the source chain and go offline now.
+  function onNetworkTimeout(){
+    timeoutStreak++;
+    if(timeoutStreak>=2 && !effectivelyOffline) enterOffline();
+  }
   function notifyFallback(){
     if(fellBack) return;
     fellBack=true;
@@ -94,9 +110,12 @@
       }
       if(!resp && navigator.onLine && !offline){
         try{
-          resp=await fetch(url);
+          resp=await timedFetch(url,{},6000);                // 6s cap: dead-wifi must not hang the map
           if(resp && resp.ok) await cache.put(url, resp.clone());
-        }catch(e){ resp=null; }
+        }catch(e){
+          if(e && e.name==='AbortError') onNetworkTimeout();
+          resp=null;
+        }
       }
       if(!resp || !resp.ok){
         if(usedTemplate===getTemplate() && !offline) onTileFail();
@@ -191,13 +210,15 @@
         }
         touchTap=false;
       };
+      const onDbl=e=>{ const r=this.canvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; const ll=this.screenToLatLng(x,y); this.setZoom(this.zoom+1, ll); };
+      this._h={down:onDown,move:onMove,up:onUp,dbl:onDbl};
       this.canvas.addEventListener('touchstart',onDown,{passive:false});
       this.canvas.addEventListener('touchmove',onMove,{passive:false});
       this.canvas.addEventListener('touchend',onUp);
       this.canvas.addEventListener('mousedown',onDown);
       window.addEventListener('mousemove',onMove);
       window.addEventListener('mouseup',onUp);
-      this.canvas.addEventListener('dblclick',e=>{ const r=this.canvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top; const ll=this.screenToLatLng(x,y); this.setZoom(this.zoom+1, ll); });
+      this.canvas.addEventListener('dblclick',onDbl);
     }
     _fireTap(clientX,clientY){
       const r=this.canvas.getBoundingClientRect();
@@ -267,7 +288,7 @@
       const z=Math.floor(this.zoom);
       const projC=Geo.project(this.center.lat,this.center.lng,z);
       const sp=256;
-      const tiles=[];
+      const keep=new Set();
       const x0=Math.floor((projC.x-this.w/2)/sp)-1, x1=Math.floor((projC.x+this.w/2)/sp)+1;
       const y0=Math.floor((projC.y-this.h/2)/sp)-1, y1=Math.floor((projC.y+this.h/2)/sp)+1;
       const src=getTemplate();
@@ -277,26 +298,38 @@
         for(let x=x0;x<=x1;x++){
           const wrap=Math.pow(2,z);
           const wx=((x%wrap)+wrap)%wrap;
-          const url=src.replace('{z}',z).replace('{x}',wx).replace('{y}',y);
           const key=z+'/'+wx+'/'+y;
+          keep.add(key);
+          const url=src.replace('{z}',z).replace('{x}',wx).replace('{y}',y);
           const sx=wx*sp-projC.x+this.w/2;
           const sy=y*sp-projC.y+this.h/2;
           this._drawTile(url,key,sx,sy,src);
         }
       }
+      // prune stale tokens so panning/zooming cannot accumulate memory forever
+      for(const k in this._tileToks){
+        if(!this._tileToks.hasOwnProperty(k) || keep.has(k)) continue;
+        const t=this._tileToks[k];
+        if(t && t.blob){ try{ URL.revokeObjectURL(t.blob); }catch(e){} }
+        delete this._tileToks[k];
+      }
     }
     _drawTile(url,key,sx,sy,usedTemplate){
       const tok=this._tileToks[key];
       if(tok && tok.url===url && tok.sx===sx && tok.sy===sy){
-        if(tok.img) ctxDraw(this, tok.img, sx, sy);
+        if(tok.img) ctxDraw(this, tok.img, sx, sy);   // pending loads redraw on completion
         return;
       }
-      this._tileToks[key]={url,sx,sy,key};
+      if(tok && tok.blob && !tok.img) try{ URL.revokeObjectURL(tok.blob); }catch(e){}
+      this._tileToks[key]={url,sx,sy,key,blob:null};
       const self=this;
       getImage(url, usedTemplate, key).then(function(obj){
         if(!obj) return;
+        const t=self._tileToks[key];
+        if(!t || t.url!==url){ URL.revokeObjectURL(obj); return; }
         const im=new Image();
-        im.onload=function(){ self._tileToks[key].img=im; self._tilesOk++; self.render(); URL.revokeObjectURL(obj); };
+        im.onload=function(){ t.img=im; if(t.blob) URL.revokeObjectURL(t.blob); t.blob=null; self._tilesOk++; self.render(); };
+        t.blob=obj;
         im.src=obj;
       }).catch(function(){});
     }
@@ -423,7 +456,26 @@
       ctx.beginPath(); ctx.arc(s.x,s.y,14,0,Math.PI*2); ctx.strokeStyle='rgba(34,139,84,.5)'; ctx.lineWidth=2; ctx.stroke();
       ctx.beginPath(); ctx.arc(s.x,s.y,4,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
     }
-    dispose(){ MAPS.delete(this); this._ro.disconnect(); }
+    dispose(){
+      MAPS.delete(this);
+      this._ro.disconnect();
+      const h=this._h;
+      if(h){
+        this.canvas.removeEventListener('touchstart',h.down);
+        this.canvas.removeEventListener('touchmove',h.move);
+        this.canvas.removeEventListener('touchend',h.up);
+        this.canvas.removeEventListener('mousedown',h.down);
+        window.removeEventListener('mousemove',h.move);
+        window.removeEventListener('mouseup',h.up);
+        this.canvas.removeEventListener('dblclick',h.dbl);
+        this._h=null;
+      }
+      for(const k in this._tileToks){
+        const t=this._tileToks[k];
+        if(t && t.blob){ try{ URL.revokeObjectURL(t.blob); }catch(e){} }
+      }
+      this._tileToks={};
+    }
   }
 
   function ctxDraw(self,img,sx,sy){
