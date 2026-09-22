@@ -5,9 +5,11 @@
 
   let current='home';
   let currentFarmId=null;
+  let lastFarmOrigin='farms';
 
   // ---------- router ----------
-  function goto(view, farmId){
+  function goto(view, farmId, origin){
+    const prev=current;
     current=view;
     currentFarmId=farmId||null;
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -16,6 +18,12 @@
       n.classList.toggle('active', n.dataset.nav===view);
     });
     $('#view-'+view).scrollTop=0;
+    if(view==='farm'){
+      const from=origin||(prev==='map'?'map':(prev==='home'?'home':'farms'));
+      lastFarmOrigin=from;
+      const page=$('view-farm');
+      if(page){ const bb=page.querySelector('.back'); if(bb) bb.dataset.back=from; }
+    }
     if(view==='home') App.Home.render();
     else if(view==='farms') App.Farms.render();
     else if(view==='map') App.AreaMap.render();

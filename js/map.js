@@ -9,12 +9,16 @@
     'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'
   ];
   const DEFAULT_TILE_TEMPLATE=TILE_SOURCES[0];
+  // Offline package: pre-generated local tiles (same-origin -> SW cache-first).
+  // Used automatically whenever the device has no network; path served from the repo/tool output.
+  const LOCAL_TILES='./tiles/{z}/{x}/{y}.png';
   let tileTemplate=null;   // user override (set from Settings)
   let sourceIndex=0;
   let tileFails=0, fellBack=false, srcVersion=0;
   const MAPS=new Set();
 
   function getTemplate(){
+    if(!navigator.onLine) return LOCAL_TILES;
     return tileTemplate||TILE_SOURCES[sourceIndex];
   }
   function onTileFail(){
@@ -384,4 +388,5 @@
 
   window.GeoMap=GeoMap;
   window.GeoMap.setTileTemplate=function(t){ tileTemplate=(t&&t.trim())?t.trim():null; };
+  window.GeoMap.getTemplate=getTemplate;
 })();

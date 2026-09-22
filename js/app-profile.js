@@ -380,6 +380,41 @@
   $('#set-mismatch').addEventListener('change',e=>DB.setSetting('mismatchM',e.target.value));
   $('#set-walkm').addEventListener('change',e=>DB.setSetting('walkM',e.target.value));
   $('#set-notify').addEventListener('change',e=>DB.setSetting('notifications',e.target.checked));
+  function lon2z(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
+  function lat2z(lat,z){ return Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*Math.pow(2,z)); }
+  async function prepareOfflineTiles(){
+    const farms=await DB.farms();
+    let n=null,s=null,e=null,w=null;
+    farms.forEach(f=>{
+      const add=ll=>{ if(!ll||ll.lat==null) return; if(n===null||ll.lat<n) n=ll.lat; if(s===null||ll.lat>s) s=ll.lat; if(w===null||ll.lng<w) w=ll.lng; if(e===null||ll.lng>e) e=ll.lng; };
+      add(f);
+      (f.boundary&&f.boundary.points||[]).forEach(add);
+    });
+    if(n===null){ toast(I18N.t('offlineNoFarms')); return; }
+    const pad=(s-n)*0.15+0.01;
+    n-=pad; s+=pad; w-=pad; e+=pad;
+    const status=$('tiles-status');
+    const setSt=async txt=>{ status.textContent=txt; status.hidden=false; };
+    await setSt(I18N.t('tilesPart',{n:0}));
+    const minZ=10, maxZ=17, urls=[];
+    for(let z=minZ;z<=maxZ;z++){
+      const x0=lon2z(w,z), x1=lon2z(e,z), y0=lat2z(n,z), y1=lat2z(s,z);
+      for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) urls.push('./tiles/'+z+'/'+x+'/'+y+'.png');
+    }
+    let ok=0,cnt=0;
+    for(const u of urls){
+      try{
+        const r=await fetch(u,{cache:'reload'});
+        if(r&&r.ok) ok++;
+      }catch(err){}
+      cnt++;
+      if(cnt%40===0) await setSt(I18N.t('tilesPart',{n:cnt}));
+      await new Promise(r=>setTimeout(r,cnt%10===0?8:0));
+    }
+    await setSt(I18N.t('tilesDone',{n:ok}));
+    toast(I18N.t('tilesDone',{n:ok}));
+  }
+  $('#btn-tiles-prep').addEventListener('click',prepareOfflineTiles);
   $('#set-formid').addEventListener('change',e=>{
     DB.setSetting('googleFormId',e.target.value.trim());
     window.Sync.setFormConfig(e.target.value.trim(), parseEntries($('#set-formentries').value));
