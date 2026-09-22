@@ -118,6 +118,25 @@
       <button class="fab" id="btn-map-follow">⌖</button>
     </div>
     <div id="map-route-inline" class="route-panel"></div>
+    <div id="map-nav-panel" class="route-panel" hidden>
+      <div class="nav-panel-header">
+        <h3 data-i18n="navigateToFarm"></h3>
+        <button class="iconbtn" id="btn-nav-stop" aria-label="stop navigation">✕</button>
+      </div>
+      <div class="nav-panel-body">
+        <div class="compass-wrap">
+          <canvas id="nav-compass" width="120" height="120" aria-hidden="true"></canvas>
+        </div>
+        <div class="nav-info">
+          <div id="nav-farm-name" class="nav-farm-name"></div>
+          <div id="nav-distance" class="nav-distance muted"></div>
+          <div id="nav-bearing" class="nav-bearing muted"></div>
+        </div>
+      </div>
+      <div id="nav-arrived" class="nav-arrived" hidden>
+        <span>🎯</span> <span data-i18n="navigateArrived"></span>
+      </div>
+    </div>
     <div id="map-legend" class="legend card"></div>
   </section>
 

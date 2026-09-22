@@ -289,6 +289,14 @@ const lines=[];
   // ================= AREA MAP =================
   const AreaMap={
      selectedRouteFarm: null,
+     _navigating: false,
+     _navTarget: null,
+     _deviceHeading: 0,
+     _navUpdateTimer: null,
+     _compassCanvas: null,
+     _compassCtx: null,
+     _arrivedNotified: false,
+
      async render(){
       const vv=$('view-map');
       if(vv&&vv.hidden){ if(typeof TrailUI!=='undefined'&&TrailUI) TrailUI.update(); return; }
@@ -406,11 +414,165 @@ const lines=[];
        $('#area-map-badge').textContent=I18N.t('allFarms')+': '+active.length+' · '+I18N.t('boundaries')+': '+bounded.length;
        TrailUI.update();
      },
-     selectRouteFarm(farm){
-       AreaMap.selectedRouteFarm=farm;
-       AreaMap.render().catch(()=>{});
-     }
-   };
+selectRouteFarm(farm){
+        AreaMap.selectedRouteFarm=farm;
+        AreaMap.startNavigation(farm);
+        AreaMap.render().catch(()=>{});
+      },
+      startNavigation(farm){
+        this._navigating=true;
+        this._navTarget=farm;
+        this._arrivedNotified=false;
+        this._showNavPanel();
+        this._startNavUpdates();
+        this._initCompass();
+        this._listenDeviceOrientation();
+      },
+      stopNavigation(){
+        this._navigating=false;
+        this._navTarget=null;
+        this._hideNavPanel();
+        this._stopNavUpdates();
+        this._stopDeviceOrientation();
+      },
+      _showNavPanel(){
+        const panel=$('#map-nav-panel');
+        const inline=$('#map-route-inline');
+        if(panel){ panel.hidden=false; }
+        if(inline){ inline.hidden=true; }
+        this._updateNavPanel();
+      },
+      _hideNavPanel(){
+        const panel=$('#map-nav-panel');
+        const inline=$('#map-route-inline');
+        if(panel){ panel.hidden=true; }
+        if(inline){ inline.hidden=false; }
+      },
+      _updateNavPanel(){
+        if(!this._navigating || !this._navTarget) return;
+        const last=AreaMap._lastLocation;
+        if(!last) return;
+        const f=this._navTarget;
+        const d=Geo.distM(last,f);
+        const bear=Geo.bearingDeg(last,{lat:f.lat,lng:f.lng});
+        const dirLabel=I18N.t('directions')[Geo.dirLabel(bear)];
+        // update farm name
+        const nameEl=$('#nav-farm-name');
+        if(nameEl) nameEl.textContent=f.name||'—';
+        // update distance
+        const distEl=$('#nav-distance');
+        if(distEl) distEl.textContent=I18N.t('navigateDistance',{dist:Geo.fmtDist(d)});
+        // update bearing
+        const bearingEl=$('#nav-bearing');
+        if(bearingEl) bearingEl.textContent=I18N.t('navigateBearing',{bearing:dirLabel});
+        // check arrived
+        if(d<=50 && !this._arrivedNotified){
+          this._arrivedNotified=true;
+          this._showArrived();
+        }
+        // draw compass
+        this._drawCompass();
+      },
+      _showArrived(){
+        const arrived=$('#nav-arrived');
+        if(arrived){
+          arrived.hidden=false;
+          toast(I18N.t('navigateArrived'));
+          setTimeout(()=>{ arrived.hidden=true; },3000);
+        }
+      },
+      _startNavUpdates(){
+        if(this._navUpdateTimer) clearInterval(this._navUpdateTimer);
+        this._navUpdateTimer=setInterval(()=>this._updateNavPanel(),1000);
+      },
+      _stopNavUpdates(){
+        if(this._navUpdateTimer) clearInterval(this._navUpdateTimer);
+        this._navUpdateTimer=null;
+      },
+      _initCompass(){
+        const canvas=$('#nav-compass');
+        if(canvas && !this._compassCtx){
+          this._compassCanvas=canvas;
+          this._compassCtx=canvas.getContext('2d');
+        }
+      },
+      _drawCompass(){
+        if(!this._compassCtx || !this._compassCanvas) return;
+        const ctx=this._compassCtx;
+        const canvas=this._compassCanvas;
+        const size=120;
+        const center=size/2;
+        const radius=54;
+        const heading=this._deviceHeading || 0;
+        const targetBearing=this._navTarget && AreaMap._lastLocation ? Geo.bearingDeg(AreaMap._lastLocation,{lat:this._navTarget.lat,lng:this._navTarget.lng}) : 0;
+        const relativeBearing=targetBearing - heading;
+        ctx.clearRect(0,0,size,size);
+        // outer circle
+        ctx.beginPath();
+        ctx.arc(center,center,radius,0,Math.PI*2);
+        ctx.strokeStyle='#e3e8ee';
+        ctx.lineWidth=2;
+        ctx.stroke();
+        // cardinal directions
+        ctx.font='11px sans-serif';
+        ctx.fillStyle='#6b7684';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ['N','NE','E','SE','S','SW','W','NW'].forEach((d,i)=>{
+          const angle=(i*45-90)*Math.PI/180;
+          const x=center+Math.cos(angle)*(radius+14);
+          const y=center+Math.sin(angle)*(radius+14);
+          ctx.fillText(d,x,y);
+        });
+        // arrow pointing to target
+        const arrowAngle=(relativeBearing-90)*Math.PI/180;
+        ctx.save();
+        ctx.translate(center,center);
+        ctx.rotate(arrowAngle);
+        ctx.beginPath();
+        ctx.moveTo(0,-radius+6);
+        ctx.lineTo(-10,-radius+26);
+        ctx.lineTo(0,-radius+14);
+        ctx.lineTo(10,-radius+26);
+        ctx.closePath();
+        ctx.fillStyle='#0ea5e9';
+        ctx.fill();
+        ctx.strokeStyle='#fff';
+        ctx.lineWidth=2;
+        ctx.stroke();
+        ctx.restore();
+        // center dot
+        ctx.beginPath();
+        ctx.arc(center,center,6,0,Math.PI*2);
+        ctx.fillStyle='#0ea5e9';
+        ctx.fill();
+      },
+      _listenDeviceOrientation(){
+        if(this._deviceOrientationHandler) return;
+        this._deviceOrientationHandler=(e)=>{
+          // webkitCompassHeading for iOS, alpha for Android
+          let heading=e.webkitCompassHeading;
+          if(heading==null && e.alpha!=null){
+            heading=360-e.alpha;
+          }
+          if(heading!=null){
+            this._deviceHeading=heading;
+            this._drawCompass();
+          }
+        };
+        window.addEventListener('deviceorientation',this._deviceOrientationHandler,true);
+        // request permission for iOS 13+
+        if(DeviceOrientationEvent && DeviceOrientationEvent.requestPermission){
+          DeviceOrientationEvent.requestPermission().catch(()=>{});
+        }
+      },
+      _stopDeviceOrientation(){
+        if(this._deviceOrientationHandler){
+          window.removeEventListener('deviceorientation',this._deviceOrientationHandler,true);
+          this._deviceOrientationHandler=null;
+        }
+      }
+    };
   $('#btn-map-locate').addEventListener('click',async()=>{
     const btn=$('btn-map-locate');
     btn.disabled=true;
@@ -437,6 +599,8 @@ const TrailUI={
   if(window.Trail){
      Trail.setHandler(loc=>{
        if(loc&&areaMap) areaMap.setLocation(loc,Trail.follow);
+       if(loc) AreaMap._lastLocation={lat:loc.lat,lng:loc.lng};
+       if(AreaMap._navigating) AreaMap._updateNavPanel();
        const now=Date.now();
        if(now-TrailUI._render>1100){ TrailUI._render=now; TrailUI.update(); AreaMap.render().catch(()=>{}); }
        else TrailUI.update();
@@ -444,6 +608,7 @@ const TrailUI={
 $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=true; const b=$('btn-map-follow'); if(b)b.classList.add('on'); AreaMap.render().catch(()=>{}); });
       $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
       $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
+      $('#btn-nav-stop').addEventListener('click',()=>{ AreaMap.stopNavigation(); });
     }
    $('#btn-map-follow').addEventListener('click',()=>{
     if(window.Trail){

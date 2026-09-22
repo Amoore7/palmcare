@@ -162,6 +162,20 @@ body{height:100dvh;overflow:hidden}
   padding:7px 2px;font-size:14px;color:var(--ink);cursor:pointer;border-bottom:1px dashed #eee}
 .legend-row b{margin-right:auto;color:var(--muted);font-size:13px;font-weight:600}
 
+/* navigation panel */
+#map-nav-panel{position:relative;overflow:hidden}
+.nav-panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.nav-panel-header h3{margin:0;font-size:16px;color:var(--green-d)}
+.nav-panel-body{display:flex;align-items:center;gap:14px}
+.compass-wrap{position:relative;flex:0 0 120px}
+#nav-compass{display:block;margin:0 auto}
+.nav-info{flex:1;min-width:0}
+.nav-farm-name{font-weight:600;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-distance{font-size:20px;font-weight:700;color:var(--green-d);margin-top:4px}
+.nav-bearing{font-size:13px;color:var(--muted);margin-top:2px}
+.nav-arrived{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;background:var(--green-l);border-radius:12px;color:var(--green-d);font-size:16px;font-weight:600;animation:arrivePulse 1s ease-out}
+@keyframes arrivePulse{0%{transform:scale(.95)}50%{transform:scale(1.02)}100%{transform:scale(1)}}
+
 /* toast */
 .toast{position:fixed;bottom:calc(var(--nav-h) + 16px);left:50%;transform:translateX(-50%);
   background:#222d28;color:#fff;padding:12px 18px;border-radius:12px;font-size:15px;z-index:100;max-width:90%;
