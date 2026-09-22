@@ -6,13 +6,23 @@
   let st=null; // state
   let map=null;
 
-  async function open(farmId, type){
-    st={farmId, type:type||'boundary', points:[], path:[], mode:'corners', watchId:null, running:false, labelIndex:0};
+async function open(farmId, type, editMode){
+    st={farmId, type:type||'boundary', points:[], path:[], mode:'corners', watchId:null, running:false, labelIndex:0, editMode:!!editMode, dragging:null};
     $('ov-boundary').hidden=false;
-    $('boundary-title').textContent=type==='obstacle'?I18N.t('addObstacle'):I18N.t('drawBoundary');
-    $('boundary-points').textContent='';      // clear any leftover counters from the previous farm
+    $('boundary-title').textContent=type==='obstacle'?I18N.t('addObstacle'):(editMode?I18N.t('editBoundary'):I18N.t('drawBoundary'));
+    $('boundary-points').textContent='';
     $('boundary-badge').textContent='';
     const area=$('boundary-area'); area.hidden=true; area.textContent='';
+    
+    // Load existing boundary if editing
+    if(editMode && type==='boundary'){
+      const farm=await DB.farm(farmId);
+      if(farm && farm.boundary && farm.boundary.points && farm.boundary.points.length){
+        st.points=farm.boundary.points.map(p=>({lat:p.lat,lng:p.lng}));
+        st.mode='edit';
+      }
+    }
+    
     await paint();
     renderControls();
   }
@@ -25,6 +35,11 @@
     if(!map){
       map=new GeoMap(canvas,{center:centerPt||{lat:24.7,lng:46.7},zoom:17,tiles:true});
       map.onTap=ll=>placePoint({lat:ll.lat,lng:ll.lng,accuracy:0,tapped:true});
+    }
+    // Add drag handlers for edit mode
+    if(!map._dragHandlers){
+      map._dragHandlers=true;
+      addDragHandlers();
     }
     renderItems();
   }
@@ -40,6 +55,87 @@
     if(f && f.lat!=null) return {lat:f.lat,lng:f.lng};
     const last=await DB.getSetting('lastKnownLocation',null);
     return last||null;
+  }
+
+  function addDragHandlers(){
+    const canvas=$('boundary-map');
+    if(!canvas) return;
+    let draggingIdx=null;
+    let dragStart=null;
+
+    function getEventCoords(e){
+      const rect=canvas.getBoundingClientRect();
+      const clientX=e.touches?e.touches[0].clientX:e.clientX;
+      const clientY=e.touches?e.touches[0].clientY:e.clientY;
+      return {x:clientX-rect.left, y:clientY-rect.top};
+    }
+
+    function findNearestVertex(screenX, screenY){
+      if(!map || !st.points.length) return -1;
+      let bestIdx=-1, bestDist=Infinity;
+      st.points.forEach((p,i)=>{
+        const s=map.projectToScreen(p.lat, p.lng);
+        const d=Math.hypot(s.x-screenX, s.y-screenY);
+        if(d<bestDist && d<25){ bestDist=d; bestIdx=i; }
+      });
+      return bestIdx;
+    }
+
+    function onDown(e){
+      if(st.mode!=='edit') return;
+      const coords=getEventCoords(e);
+      const idx=findNearestVertex(coords.x, coords.y);
+      if(idx>=0){
+        draggingIdx=idx;
+        dragStart={x:coords.x, y:coords.y};
+        e.preventDefault();
+        canvas.style.cursor='grabbing';
+      }
+    }
+
+    function onMove(e){
+      if(draggingIdx===null || !map) return;
+      const coords=getEventCoords(e);
+      const dx=coords.x-dragStart.x;
+      const dy=coords.y-dragStart.y;
+      dragStart={x:coords.x, y:coords.y};
+
+      const sp=256*Math.pow(2,map.zoom);
+      const dLat=dy/sp*360;
+      const dLng=(-dx)/sp*360/Math.cos(st.points[draggingIdx].lat*Math.PI/180);
+      
+      st.points[draggingIdx].lat+=dLat;
+      st.points[draggingIdx].lng+=dLng;
+      renderItems();
+    }
+
+    function onUp(e){
+      if(draggingIdx!==null){
+        draggingIdx=null;
+        dragStart=null;
+        canvas.style.cursor='';
+      }
+    }
+
+    canvas.addEventListener('touchstart', onDown, {passive:false});
+    canvas.addEventListener('touchmove', onMove, {passive:false});
+    canvas.addEventListener('touchend', onUp);
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  async function saveEdit(){
+    if(st.points.length<3){ toast(I18N.t('needPoints')); return; }
+    const ok=await window.FlowUtil.confirm(I18N.t('confirmPolygon'));
+    if(!ok) return;
+    const farm=await DB.farm(st.farmId);
+    const area=Geo.polygonAreaHa(st.points);
+    farm.boundary={points:st.points.slice(), areaHa:area, method:'edit', ts:Date.now()};
+    await DB.saveFarm(farm);
+    toast(I18N.t('editBoundarySaved')+(area?' · '+I18N.t('areaIs',{a:Geo.fmtArea(area)}):''));
+    close();
+    window.App.refreshAll();
   }
   function renderItems(){
     if(!map) return;
@@ -65,14 +161,21 @@
     const wrap=$('boundary-mode');
     wrap.innerHTML='';
     if(st.type==='boundary'){
-      const m1=el('button',{class:'btn '+(st.mode==='corners'?'btn-primary':'btn-outline'),onclick:()=>setMode('corners')},[I18N.t('cornersMode')]);
-      const m2=el('button',{class:'btn '+(st.mode==='walk'?'btn-primary':'btn-outline'),onclick:()=>setMode('walk')},[I18N.t('walkMode')]);
-      wrap.appendChild(m1); wrap.appendChild(m2);
-    }
-    const add=el('button',{class:'btn btn-primary',id:'boundary-add',onclick:()=>st.mode==='walk'?toggleWalk():capturePoint()},[I18N.t(st.mode==='walk'?'walkStop':(st.type==='obstacle'?I18N.t('obstacleZoneAdd'):'cornerTap'))]);
-    wrap.appendChild(add);
-    if(st.mode==='corners'||st.type==='obstacle'){
-      wrap.appendChild(el('p',{class:'muted small',style:'margin:8px 0 0;text-align:center'},[I18N.t('tapOrGps')]));
+      if(st.mode==='edit'){
+        // Edit mode controls
+        wrap.appendChild(el('p',{class:'muted small',style:'margin:0 0 8px;text-align:center'},[I18N.t('dragToEdit')]));
+        const doneBtn=el('button',{class:'btn btn-primary',onclick:saveEdit},[I18N.t('done')]);
+        wrap.appendChild(doneBtn);
+      } else {
+        const m1=el('button',{class:'btn '+(st.mode==='corners'?'btn-primary':'btn-outline'),onclick:()=>setMode('corners')},[I18N.t('cornersMode')]);
+        const m2=el('button',{class:'btn '+(st.mode==='walk'?'btn-primary':'btn-outline'),onclick:()=>setMode('walk')},[I18N.t('walkMode')]);
+        wrap.appendChild(m1); wrap.appendChild(m2);
+        const add=el('button',{class:'btn btn-primary',id:'boundary-add',onclick:()=>st.mode==='walk'?toggleWalk():capturePoint()},[I18N.t(st.mode==='walk'?'walkStop':(st.type==='obstacle'?I18N.t('obstacleZoneAdd'):'cornerTap'))]);
+        wrap.appendChild(add);
+        if(st.mode==='corners'||st.type==='obstacle'){
+          wrap.appendChild(el('p',{class:'muted small',style:'margin:8px 0 0;text-align:center'},[I18N.t('tapOrGps')]));
+        }
+      }
     }
   }
 

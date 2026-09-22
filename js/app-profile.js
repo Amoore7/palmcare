@@ -166,6 +166,8 @@ const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},[
        renderPalms(farm);
        renderVisits(farm);
        $('#btn-del-boundary').hidden=!farm.boundary;
+       $('#btn-boundary').innerHTML = farm.boundary ? '✏️ <span data-i18n="editBoundary"></span>' : '<span data-i18n="drawBoundary"></span>';
+       window.App.applyI18n();
      }
    };
 

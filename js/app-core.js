@@ -248,7 +248,15 @@
 
     // farm profile buttons
     $('btn-farm-visit').addEventListener('click',()=>{ if(currentFarmId) Flow.openVisit(currentFarmId); });
-    $('btn-boundary').addEventListener('click',()=>{ if(currentFarmId) Flow.Boundary.open(currentFarmId,'boundary'); });
+    $('btn-boundary').addEventListener('click',async()=>{
+      if(!currentFarmId) return;
+      const farm=await DB.farm(currentFarmId);
+      if(farm && farm.boundary && farm.boundary.points && farm.boundary.points.length){
+        Flow.Boundary.open(currentFarmId,'boundary',true); // edit mode
+      } else {
+        Flow.Boundary.open(currentFarmId,'boundary');
+      }
+    });
     $('btn-del-boundary').addEventListener('click',async()=>{
       const f=await DB.farm(currentFarmId);
       if(!f||!f.boundary) return;
