@@ -44,14 +44,14 @@
 
   async function stepFarm(){
     const body=$('visit-body');
-    const farms=(await DB.farms()).filter(f=>f.lat!=null||(f.boundary&&f.boundary.points&&f.boundary.points.length));
+    const farms=await DB.farms();
     const q=el('input',{type:'search',placeholder:I18N.t('searchFarms'),class:'searchinput'});
     const wrap=el('div',{class:'searchbar'},[q]);
     const list=el('div',{class:'card-list'});
     function render(query){
       list.innerHTML='';
       const qq=(query||'');
-      farms.filter(f=>!qq||(f.name||'').toLowerCase().includes(qq)||String(f.nationalId||'').includes(qq)||String(f.phone||'').replace(/[^0-9+]/g,'').includes(qq.replace(/[^0-9+]/g,'')))
+      farms.filter(f=>!qq||(f.name||'').toLowerCase().includes(qq)||String(f.nationalId||'').includes(qq)||(qq.replace(/[^0-9+]/g,'')!==''&&String(f.phone||'').replace(/[^0-9+]/g,'').includes(qq.replace(/[^0-9+]/g,''))))
         .forEach(f=>{
           const c=el('div',{class:'farm-card'+(visit.farmId===f.id?' sel':''),style:'border-right-color:#228b54',onclick:()=>{
             visit.farmId=f.id;

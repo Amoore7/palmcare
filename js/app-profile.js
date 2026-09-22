@@ -22,11 +22,9 @@
       const kv=(a,b)=>el('div',{class:'kv'},[el('b',{},[a]),el('span',{},[b])]);
       info.appendChild(kv(I18N.t('nationalId'),farm.nationalId||'—'));
       info.appendChild(kv(I18N.t('phone'),farm.phone||'—'));
-      if(farm.lat!=null){
-      const span=el('span',{},[farm.lat.toFixed(6)+' , '+farm.lng.toFixed(6)]);
+      const span=el('span',{},[farm.lat!=null?(farm.lat.toFixed(6)+' , '+farm.lng.toFixed(6)):I18N.t('coordsMissing')]);
       span.appendChild(el('button',{class:'linkbtn',onclick:()=>window.App.openExternalMaps(farm)},[' 🗺 '+I18N.t('openInMaps')]));
       info.appendChild(kv(I18N.t('lat')+' / '+I18N.t('lng'),span));
-    }
       info.appendChild(kv(I18N.t('registeredCount'),String(farm.registeredCount||0)));
       info.appendChild(kv(I18N.t('areaNotCalculated'), farm.boundary? Geo.fmtArea(Geo.polygonAreaHa(farm.boundary.points))+' '+I18N.t('ha') : '—'));
       const editBtn=el('button',{class:'btn btn-outline',onclick:()=>editFarm(farm)},['✏️ '+I18N.t('editFarm')]);

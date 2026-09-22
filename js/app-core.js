@@ -125,6 +125,57 @@
     }
   };
 
+  // ---------- NEW VISIT chooser ----------
+  const NewVisit={
+    async open(){
+      const ov=$('ov-newvisit'); ov.hidden=false;
+      const q=$('newvisit-search'), list=$('newvisit-list'), empty=$('newvisit-empty');
+      const manual=$('newvisit-manual'), manBtn=$('btn-newvisit-manual');
+      q.value=''; manual.hidden=true; manBtn.hidden=false;
+      const farms=await DB.farms();
+      function render(query){
+        list.innerHTML='';
+        const qq=(query||'').toLowerCase();
+        const qd=qq.replace(/[^0-9+]/g,'');
+        farms.filter(f=>!qq||(f.name||'').toLowerCase().includes(qq)
+          || String(f.nationalId||'').toLowerCase().includes(qq)
+          || (qd!==''&&String(f.phone||'').replace(/[^0-9+]/g,'').includes(qd))).forEach(f=>{
+          const c=el('div',{class:'farm-card',style:'border-right-color:#228b54',onclick:()=>{
+            ov.hidden=true; Flow.openVisit(f.id);
+          }},[
+            el('div',{class:'info'},[
+              el('h4',{},[f.name||'—']),
+              el('div',{class:'sub'},[((f.nationalId)?('ID: '+f.nationalId+' · '):'')+((f.phone)?('📞 '+f.phone):'')+(f.registeredCount?(' — 🌴'+f.registeredCount):'')])
+            ])
+          ]);
+          list.appendChild(c);
+        });
+        empty.hidden=farms.length!==0;
+        manBtn.hidden=false;
+      }
+      q.oninput=()=>render(q.value);
+      render('');
+      manBtn.onclick=()=>{ manual.hidden=false; manBtn.hidden=true; };
+      $('btn-nv-save').onclick=async()=>{
+        const name=$('nv-name').value.trim();
+        if(!name){ toast(I18N.t('farmNameRequired')); return; }
+        let lat=null,lng=null;
+        const la=$('nv-lat').value.trim(), lo=$('nv-lng').value.trim();
+        if(la!==''||lo!==''){
+          lat=parseFloat(la); lng=parseFloat(lo);
+          if(isNaN(lat)||isNaN(lng)||!Geo.isValidCoord(lat,lng)){ toast(I18N.t('gpsFail')); return; }
+        }
+        const f={ id:Geo.uid('farm'), name, nationalId:$('nv-nid').value.trim(), phone:$('nv-phone').value.trim(),
+          lat, lng, registeredCount:parseInt($('nv-count').value,10)||0, createdAt:Date.now(), boundary:null, obstacleZones:[] };
+        await DB.saveFarm(f);
+        ov.hidden=true;
+        toast(I18N.t('farmSaved'));
+        Flow.openVisit(f.id);
+        try{ Notifier.audit(); }catch(e){}
+      };
+    }
+  };
+
   // ---------- init ----------
   async function init(){
     applyI18n();
@@ -135,7 +186,7 @@
     // bind nav
     document.querySelectorAll('.navitem').forEach(n=>n.addEventListener('click',()=>goto(n.dataset.nav)));
     document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>goto(b.dataset.back)));
-    $('btn-new-visit').addEventListener('click',()=>Flow.openVisit(null));
+    $('btn-new-visit').addEventListener('click',()=>NewVisit.open());
     $('btn-import').addEventListener('click',()=>App.Import.openPicker());
 
     // farm profile buttons
@@ -245,6 +296,7 @@
     }catch(e){
       toast(I18N.t('dbError'));
     }
+    if($('app-version')) $('app-version').textContent='PalmCare v'+App.VERSION;
     setNet();
     try{ Notifier.audit(); }catch(e){}
   }
@@ -257,6 +309,6 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n};
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,VERSION:'0.2'};
   document.addEventListener('DOMContentLoaded',init);
 })();

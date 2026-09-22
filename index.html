@@ -144,6 +144,45 @@
     </div>
   </div>
 
+  <!-- New visit chooser: existing farm OR manual new farm -->
+  <div class="overlay full" id="ov-newvisit" hidden>
+    <div class="visit-flow">
+      <div class="sheet-head">
+        <button class="iconbtn close" data-close>✕</button>
+        <h3 data-i18n="newVisit"></h3>
+      </div>
+      <div class="visit-body">
+        <h4 class="section-title" data-i18n="pickFarm"></h4>
+        <div class="searchbar">
+          <input type="search" id="newvisit-search" data-i18n-ph="searchFarms" autocomplete="off">
+        </div>
+        <div id="newvisit-list" class="card-list"></div>
+        <p id="newvisit-empty" class="empty-msg muted" data-i18n="noFarmsHint" hidden></p>
+        <div class="divider"><span data-i18n="or"></span></div>
+        <button class="btn btn-outline btn-big" id="btn-newvisit-manual">＋ <span data-i18n="newFarmManual"></span></button>
+        <div id="newvisit-manual" class="form" hidden>
+          <label class="field"><span data-i18n="farm">*</span>
+            <input id="nv-name" data-i18n-ph="farmNamePh" autocomplete="off">
+          </label>
+          <label class="field"><span data-i18n="phone"></span>
+            <input id="nv-phone" inputmode="tel" autocomplete="off">
+          </label>
+          <label class="field"><span data-i18n="nationalId"></span>
+            <input id="nv-nid" inputmode="numeric" autocomplete="off">
+          </label>
+          <label class="field two">
+            <input id="nv-lat" type="number" step="0.000001" data-i18n-ph="lat">
+            <input id="nv-lng" type="number" step="0.000001" data-i18n-ph="lng">
+          </label>
+          <label class="field"><span data-i18n="palmCount"></span>
+            <input id="nv-count" type="number" min="0" value="0" inputmode="numeric">
+          </label>
+          <button class="btn btn-primary btn-big" id="btn-nv-save" data-i18n="saveAndStartVisit"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Visit flow -->
   <div class="overlay full" id="ov-visit" hidden>
     <div class="visit-flow">
@@ -241,6 +280,7 @@
         <p class="muted small" id="install-hint" hidden data-i18n="installHint"></p>
         <input type="file" id="backup-file" accept=".palmcare,.json" class="fileinput" hidden>
         <p class="muted small" data-i18n="settingsHint"></p>
+        <p class="muted small" id="app-version" style="text-align:center;margin-top:8px"></p>
       </div>
     </div>
   </div>
