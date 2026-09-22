@@ -139,8 +139,10 @@ body{height:100dvh;overflow:hidden}
 .warnbox{background:var(--yellow-l);border:1px solid #f3d9a6;color:#8a6110;
   border-radius:12px;padding:10px 12px;font-size:14px;margin:8px 0}
 .warnbox.red{background:var(--red-l);border-color:#f2b6b4;color:#8f2f2c}
-.warnbox.green{background:var(--green-l);border-color:#bcdc9e;color:var(--green-d)}
-.warnbox.small{padding:8px 10px;font-size:13px}
+  .warnbox.yellow{background:var(--yellow-l);border-color:#f3d9a6;color:#8a6110}
+  .warnbox.green{background:var(--green-l);border-color:#bcdc9e;color:var(--green-d)}
+  .warnbox.small{padding:8px 10px;font-size:13px}
+  .warnbox.followbanner{font-weight:bold;font-size:16px;border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer}
 
 /* due color rows */
 .due{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;color:#fff}

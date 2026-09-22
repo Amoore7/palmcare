@@ -19,6 +19,23 @@
       const info=$('#farm-info');
       info.innerHTML='';
       info.appendChild(el('h4',{},[farm.name||'—']));
+      if(farm.archived){
+        const w=el('div',{class:'warnbox'},['📦 '+I18N.t('archived')+(farm.archiveNote?(': '+farm.archiveNote):'')]);
+        w.appendChild(el('button',{class:'linkbtn',onclick:async()=>{ farm.archived=false; farm.archiveNote=null; await DB.saveFarm(farm); toast(I18N.t('farmSaved')); window.App.refreshAll(); }},['↩ '+I18N.t('unarchive')]));
+        info.insertBefore(w,info.firstChild);
+      }
+      const palms=await DB.palmsForFarm(farm.id);
+      let fd=null;
+      palms.forEach(p=>{ if(p.nextInspectionDate&&!p.result&&(fd==null||p.nextInspectionDate<fd)) fd=p.nextInspectionDate; });
+      if(fd){
+        const cls=Geo.dueClass(fd);
+        const days=Math.ceil((fd-Date.now())/86400000);
+        const label=days<=0?I18N.t('followUpToday'):I18N.t('daysLeft',{n:String(days)});
+        const binfo=el('div',{class:'warnbox followbanner '+(cls==='red'?'red':cls==='yellow'?'yellow':'green'),onclick:()=>{ window.App.goto('home'); }},[
+          '🔔 '+I18N.t('followUpReminder')+': '+Geo.fmtDate(fd)+' ('+label+')'
+        ]);
+        info.insertBefore(binfo,info.firstChild);
+      }
       const kv=(a,b)=>el('div',{class:'kv'},[el('b',{},[a]),el('span',{},[b])]);
       info.appendChild(kv(I18N.t('nationalId'),farm.nationalId||'—'));
       info.appendChild(kv(I18N.t('phone'),farm.phone||'—'));
@@ -135,6 +152,8 @@
           ' · '+I18N.t('actualCount')+': <b>'+(v.actualCount!=null?v.actualCount:'—')+'</b>'
         ])
       ]);
+      if(v.entryTime||v.exitTime) item.appendChild(el('div',{class:'muted small'},['⏱ '+I18N.t('entry')+': '+(v.entryTime||'—')+' · '+I18N.t('exit')+': '+(v.exitTime||'—')]));
+      if(v.exitGPS&&v.exitGPS.lat!=null) item.appendChild(el('div',{class:'muted small'},['🏁 '+I18N.t('exitGps')+': '+v.exitGPS.lat.toFixed(5)+','+v.exitGPS.lng.toFixed(5)]));
       if(v.discrepancyNote) item.appendChild(el('div',{class:'warnbox small'},[v.discrepancyNote]));
       if(v.fTreatment && (v.fTreatment.treatedPalms||v.fTreatment.fibrolPalms)) item.appendChild(el('div',{class:'muted small'},['💊 '+I18N.t('phosphideTotal')+': <b>'+String(v.fTreatment.treatedPalms*(v.fTreatment.phosphidePerPalm||0))+'</b>'+(v.fTreatment.fibrolPalms?(' · '+I18N.t('fibrol')+': '+String(v.fTreatment.fibrolPalms)+' 🌴 · '+String(v.fTreatment.fibrolMl||0)+' ml'):'')]));
       if(v.obstacles&&v.obstacles.length){ const tags=el('div',{},[v.obstacles.map(t=>el('span',{class:'tag'},[t]))]); item.appendChild(tags); }
@@ -155,7 +174,8 @@
         areaMap=new GeoMap(canvas,{center:{lat:24.7,lng:46.7},zoom:11,tiles:true});
         AreaMap.instance=areaMap;
         areaMap.onTap=async (ll,pt)=>{
-          const farms=await DB.farms();
+          const all=await DB.farms();
+          const farms=all.filter(f=>!f.archived);
           let best=null,bd=1e9;
           farms.forEach(f=>{
             if(f.lat==null) return;
@@ -167,11 +187,12 @@
         };
       }
       const farms=await DB.farms();
+      const active=farms.filter(f=>!f.archived);
       const last=await DB.getSetting('lastKnownLocation',null);
       if(last) areaMap.setLocation(last,false);
-      const colorOf=new Map(farms.map((f,i)=>[f.id, FARM_COLORS[i%FARM_COLORS.length]]));
+      const colorOf=new Map(active.map((f,i)=>[f.id, FARM_COLORS[i%FARM_COLORS.length]]));
       const polys=[]; const traceLines=[];
-      farms.forEach(f=>{
+      active.forEach(f=>{
         const col=colorOf.get(f.id);
         if(f.boundary&&f.boundary.points&&f.boundary.points.length){
           polys.push({points:f.boundary.points,fill:hexToRgba(col,.12),stroke:col,label:f.name||''});
@@ -181,14 +202,14 @@
           if(o.points&&o.points.length) polys.push({points:o.points,fill:'rgba(232,163,61,.22)',stroke:'#e8a33d',label:(f.name?f.name+': ':'')+(o.label||''),dash:[6,4]});
         });
       });
-      const points=farms.filter(f=>f.lat!=null).map(f=>({lat:f.lat,lng:f.lng,label:f.name||'·',color:colorOf.get(f.id),size:8}));
+      const points=active.filter(f=>f.lat!=null).map(f=>({lat:f.lat,lng:f.lng,label:f.name||'·',color:colorOf.get(f.id),size:8}));
       // nearest pending line
       const line=[]; let routeText='';
       const pending=await DB.palmsPendingInspection();
       if(last){
         let nearest=null,nd=Infinity;
         for(const p of pending){
-          const f=farms.find(x=>x.id===p.farmId);
+          const f=active.find(x=>x.id===p.farmId);
           if(!f||f.lat==null) continue;
           const d=Geo.distM(last,f);
           if(d<nd){ nd=d; nearest=f; }
@@ -210,7 +231,7 @@
         }
       }
       // legend: which farm owns which boundary
-      const bounded=farms.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
+      const bounded=active.filter(f=>f.boundary&&f.boundary.points&&f.boundary.points.length);
       const leg=$('map-legend');
       if(leg){
         leg.innerHTML='';
@@ -230,7 +251,7 @@
       }
       areaMap.setItems({polygons:polys,points,lines:line.concat(traceLines)});
       if(!areaMap._fitDone){ areaMap.fit(); areaMap._fitDone=true; }
-      $('#area-map-badge').textContent=I18N.t('allFarms')+': '+farms.length+' · '+I18N.t('boundaries')+': '+bounded.length;
+      $('#area-map-badge').textContent=I18N.t('allFarms')+': '+active.length+' · '+I18N.t('boundaries')+': '+bounded.length;
     }
   };
   $('#btn-map-locate').addEventListener('click',async()=>{

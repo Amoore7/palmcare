@@ -88,8 +88,12 @@
 
   // ---------- FARMS LIST ----------
   const Farms={
+    filter(){ return localStorage.getItem('palmcare.farmfilter')||'all'; },
     async render(){
       const farms=await DB.farms();
+      const filter=Farms.filter();
+      Array.from(document.querySelectorAll('#farms-filter .pill')).forEach(b=>b.classList.toggle('on',b.dataset.f===filter));
+      const shown=farms.filter(f=>filter==='all'||(filter==='active'?!f.archived:f.archived));
       const q=($('#farm-search').value||'').toLowerCase();
       const list=$('#farms-list');
       list.innerHTML='';
@@ -97,7 +101,9 @@
       const overdue=new Set();
       const pending=await DB.palmsPendingInspection();
       pending.forEach(p=>{ if(Geo.dueClass(p.nextInspectionDate)==='red') overdue.add(p.farmId); });
-      farms.filter(f=>!q||(f.name||'').toLowerCase().includes(q)||String(f.nationalId||'').includes(q)||String(f.phone||'').replace(/\s/g,'').includes(q.replace(/\s/g,'')))
+      const minByFarm=new Map();
+      pending.forEach(p=>{ if(!minByFarm.has(p.farmId)||p.nextInspectionDate<minByFarm.get(p.farmId)) minByFarm.set(p.farmId,p.nextInspectionDate); });
+      shown.filter(f=>!q||(f.name||'').toLowerCase().includes(q)||String(f.nationalId||'').includes(q)||String(f.phone||'').replace(/\s/g,'').includes(q.replace(/\s/g,'')))
         .forEach(f=>{
           const pendingC=pending.filter(p=>p.farmId===f.id && !p.result).length;
           const idFarms=pending.filter(p=>p.farmId===f.id && !p.result);
@@ -109,10 +115,11 @@
             if(dm!=null) d=Geo.fmtDist(dm);
           }
           const bar=el('div',{class:'farm-progress'},[]);
-          if(f.followUpDate){
+          const fd=minByFarm.get(f.id);
+          if(fd){
             const dur=5*86400000;
-            const pct=Math.max(0,Math.min(100,Math.round((Date.now()-(f.followUpDate-dur))/dur*100)));
-            const cls=Geo.dueClass(f.followUpDate);
+            const pct=Math.max(0,Math.min(100,Math.round((Date.now()-(fd-dur))/dur*100)));
+            const cls=Geo.dueClass(fd);
             bar.appendChild(el('span',{style:'width:'+pct+'%;background:'+(cls==='red'?'#d64541':cls==='yellow'?'#e8a33d':'#228b54')}));
           } else {
             bar.appendChild(el('span',{style:'width:0%'}));
@@ -141,7 +148,7 @@
           ]);
           list.appendChild(card);
         });
-      $('#farms-empty').hidden=farms.length>0;
+      $('#farms-empty').hidden=shown.length>0;
     }
   };
 
@@ -175,7 +182,7 @@
         list.innerHTML='';
         const qq=(query||'').toLowerCase();
         const qd=qq.replace(/[^0-9+]/g,'');
-        farms.filter(f=>!qq||(f.name||'').toLowerCase().includes(qq)
+        farms.filter(f=>!f.archived).filter(f=>!qq||(f.name||'').toLowerCase().includes(qq)
           || String(f.nationalId||'').toLowerCase().includes(qq)
           || (qd!==''&&String(f.phone||'').replace(/[^0-9+]/g,'').includes(qd))).forEach(f=>{
           const c=el('div',{class:'farm-card',style:'border-right-color:#228b54',onclick:()=>{
@@ -224,6 +231,10 @@
     // bind nav
     document.querySelectorAll('.navitem').forEach(n=>n.addEventListener('click',()=>goto(n.dataset.nav)));
     document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>goto(b.dataset.back)));
+    document.querySelectorAll('#farms-filter .pill').forEach(b=>b.addEventListener('click',()=>{
+      localStorage.setItem('palmcare.farmfilter',b.dataset.f);
+      App.refreshAll();
+    }));
     $('btn-new-visit').addEventListener('click',()=>NewVisit.open());
     $('btn-import').addEventListener('click',()=>App.Import.openPicker());
 

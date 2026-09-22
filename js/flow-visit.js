@@ -12,8 +12,15 @@
     $('ov-visit').hidden=false;
     visit={
       farmId: farmId||null,
-      gps:null, actualCount:null, fTreatment:null, obstacles:[], note:'', voiceBlob:null, palms:[]
+      gps:null, gpsAuto:false, startedAt:Date.now(),
+      actualCount:null, fTreatment:null, obstacles:[], note:'', voiceBlob:null, palms:[]
     };
+    // auto-capture entry GPS silently; the GPS step can re-capture or edit
+    if(navigator.geolocation){
+      Geo.capturePosition(8000).then(loc=>{
+        if(!visit.gps){ visit.gps=loc; visit.gpsAuto=true; }
+      }).catch(()=>{});
+    }
     try{
       await renderStep(0);
     }catch(e){
@@ -258,10 +265,15 @@
     const disc=(visit.actualCount!=null && farm.registeredCount && visit.actualCount!==farm.registeredCount)
       ? I18N.t('countDiscrepancy',{registered:farm.registeredCount,actual:visit.actualCount})
       : null;
+    // save first (never block on GPS), then refine with exit fix in background
+    const hm=(t)=>{ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+    const exitAt=Date.now();
     const vid=Geo.uid('visit');
     const vis={
-      id:vid, farmId:visit.farmId, date:Date.now(),
-      gps:visit.gps,
+      id:vid, farmId:visit.farmId, date:visit.startedAt||Date.now(),
+      entryAt:visit.startedAt||Date.now(), exitAt,
+      entryTime:hm(visit.startedAt||Date.now()), exitTime:hm(exitAt),
+      gps:visit.gps, exitGPS:null,
       registeredCount:farm.registeredCount||0,
       actualCount:visit.actualCount,
       discrepancyNote:disc,
@@ -280,6 +292,26 @@
     }
     if(!visit.voiceBlob){ delete vis.voiceBlob; }
     await DB.saveVisit(vis);
+    // refine exit GPS in background when a fix is available (6s budget)
+    if(navigator.geolocation){
+      Geo.capturePosition(6000).then(async el=>{
+        try{
+          const cur=await DB.visit(vid);
+          if(!cur) return;
+          cur.exitGPS={lat:el.lat,lng:el.lng,accuracy:el.accuracy};
+          cur.exitAt=Date.now(); cur.exitTime=hm(Date.now());
+          await DB.saveVisit(cur);
+        }catch(e){}
+      }).catch(()=>{});
+    }
+    // auto-archive rule: actual count over 600 -> farm archived, not inspected
+    if(visit.actualCount!=null && visit.actualCount>600 && !farm.archived){
+      farm.archived=true;
+      farm.archiveNote=I18N.t('archiveNote');
+      farm.archivedAt=Date.now();
+      await DB.saveFarm(farm);
+      toast(I18N.t('archived')+': '+farm.name);
+    }
     // house report → Google Form: fire-and-forget; never blocks the save.
     if(window.Sync && window.Sync.formVisitPayload){
       Sync.submitToGoogleForm(Sync.formVisitPayload(vis, farm)).then(r=>{
