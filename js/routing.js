@@ -124,6 +124,7 @@
   }
 
   function pointToSegmentDistance(p, a, b){
+    if(!p || !a || !b) return Infinity;
     const lat1 = a.lat, lng1 = a.lng;
     const lat2 = b.lat, lng2 = b.lng;
     const lat = p.lat, lng = p.lng;
@@ -167,49 +168,68 @@
     return {lat: lat1 + t * dLat, lng: lng1 + t * dLng};
   }
 
-  function getNextInstruction(instructions, currentIdx, routeGeometry, currentPos){
-    if(!instructions || instructions.length === 0) return null;
+  function getNextInstruction(instructions, routeGeometry, currentPos){
+    if(!instructions || instructions.length === 0 || !routeGeometry || routeGeometry.length < 2) return null;
     
     const pos = projectPointToRoute(currentPos, routeGeometry);
-    if(!pos) return instructions[0];
+    if(!pos) return {current: instructions[0], next: instructions[1] || null, progress: 0, distanceToTurn: instructions[0].distance * 1000};
     
     let cumulativeDist = 0;
+    const totalDist = instructions.reduce((s, ins)=> s + ins.distance, 0) * 1000; // meters
+    
     for(let i=0; i<instructions.length; i++){
-      cumulativeDist += instructions[i].distance * 1000; // meters
-      const stepEndProgress = cumulativeDist / (instructions.reduce((s, ins)=> s + ins.distance, 0) * 1000);
+      const stepDist = instructions[i].distance * 1000;
+      cumulativeDist += stepDist;
+      const stepEndProgress = cumulativeDist / totalDist;
       if(pos.progress < stepEndProgress){
         return {
           current: instructions[i],
           next: instructions[i+1] || null,
-          distanceToTurn: (stepEndProgress - pos.progress) * instructions.reduce((s, ins)=> s + ins.distance, 0) * 1000,
-          progress: pos.progress
+          distanceToTurn: (stepEndProgress - pos.progress) * totalDist,
+          progress: pos.progress,
+          instructionIndex: i
         };
       }
     }
-    return instructions[instructions.length - 1];
+    // Past all instructions - return last one
+    const last = instructions[instructions.length - 1];
+    return {current: last, next: null, progress: pos.progress, distanceToTurn: 0, instructionIndex: instructions.length - 1};
   }
 
   function formatInstruction(step, lang){
     const isAr = lang === 'ar';
-    let text = step.instruction;
+    let text = step.instruction || '';
     
     if(isAr){
       text = text
-        .replace(/Head /, 'اتجه ')
-        .replace(/Turn left/, 'انعطف يساراً')
-        .replace(/Turn right/, 'انعطف يميناً')
-        .replace(/Turn sharp left/, 'انعطف يساراً حاداً')
-        .replace(/Turn sharp right/, 'انعطف يميناً حاداً')
-        .replace(/Turn slight left/, 'انعطف يساراً قليلاً')
-        .replace(/Turn slight right/, 'انعطف يميناً قليلاً')
-        .replace(/Continue /, 'استمر ')
-        .replace(/Arrive/, 'وصلت')
-        .replace(/Destination/, 'الوجهة')
-        .replace(/meters?/, 'م')
-        .replace(/kilometers?/, 'كم')
-        .replace(/minutes?/, 'د');
+        .replace(/Head /g, 'اتجه ')
+        .replace(/Turn left/g, 'انعطف يساراً')
+        .replace(/Turn right/g, 'انعطف يميناً')
+        .replace(/Turn sharp left/g, 'انعطف يساراً حاداً')
+        .replace(/Turn sharp right/g, 'انعطف يميناً حاداً')
+        .replace(/Turn slight left/g, 'انعطف يساراً قليلاً')
+        .replace(/Turn slight right/g, 'انعطف يميناً قليلاً')
+        .replace(/Continue /g, 'استمر ')
+        .replace(/Arrive/g, 'وصلت')
+        .replace(/Destination/g, 'الوجهة')
+        .replace(/meters?/g, 'م')
+        .replace(/kilometers?/g, 'كم')
+        .replace(/minutes?/g, 'د');
     }
     return text;
+  }
+
+  function getTurnIcon(type){
+    const icons = {
+      'turn_left': '⬅', 'turn_right': '➡',
+      'turn_sharp_left': '↖', 'turn_sharp_right': '↗',
+      'turn_slight_left': '↖', 'turn_slight_right': '↗',
+      'continue': '⬆', 'arrive': '🎯',
+      'straight': '⬆', 'slight_right': '↗', 'slight_left': '↖',
+      'right': '➡', 'left': '⬅', 'sharp_right': '↗', 'sharp_left': '↖',
+      'destination': '🎯', 'arrive': '🎯'
+    };
+    return icons[type] || '➡';
   }
 
   window.Routing = {
@@ -239,6 +259,8 @@
     
     getNextInstruction,
     
-    formatInstruction
+    formatInstruction,
+    
+    getTurnIcon
   };
 })();

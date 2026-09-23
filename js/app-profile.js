@@ -504,7 +504,7 @@ selectRouteFarm(farm){
         if(!last) return;
         
         const nextInfo=window.Routing.getNextInstruction(
-          this._turnRoute.instructions, 0, this._turnRoute.geometry, last
+          this._turnRoute.instructions, this._turnRoute.geometry, last
         );
         
         if(!nextInfo) return;
@@ -520,17 +520,9 @@ selectRouteFarm(farm){
         const formatted=window.Routing.formatInstruction(step, lang);
         
         // Set turn icon based on instruction type
-        const icons={
-          'turn_left': '⬅', 'turn_right': '➡',
-          'turn_sharp_left': '↖', 'turn_sharp_right': '↗',
-          'turn_slight_left': '↖', 'turn_slight_right': '↗',
-          'continue': '⬆', 'arrive': '🎯'
-        };
-        if(turnIcon) turnIcon.textContent=icons[step.type] || '➡';
+        if(turnIcon) turnIcon.textContent=window.Routing.getTurnIcon(step.type);
         if(turnText) turnText.textContent=formatted;
-        if(turnDistance) turnDistance.textContent=window.Routing.formatInstruction(
-          {instruction: step.distance < 1 ? I18N.t('metersAway',{dist:Math.round(step.distance*1000)}) : I18N.t('kmAway',{dist:step.distance.toFixed(1)})}, lang
-        );
+        if(turnDistance) turnDistance.textContent=step.distance < 1 ? I18N.t('metersAway',{dist:Math.round(step.distance*1000)}) : I18N.t('kmAway',{dist:step.distance.toFixed(1)});
         if(turnNext && nextInfo.next){
           turnNext.textContent=I18N.t('nextTurn',{instruction: window.Routing.formatInstruction(nextInfo.next, lang)});
         }

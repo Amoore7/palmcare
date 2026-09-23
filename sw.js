@@ -24,6 +24,7 @@ const PRECACHE_URLS=[
   './js/app-core.js',
   './js/app-import.js',
   './js/app-profile.js',
+  './js/routing.js',
   './js/lib/idb.js',
   './js/lib/xlsx.full.min.js',
   './js/lib/jspdf.umd.min.js',
