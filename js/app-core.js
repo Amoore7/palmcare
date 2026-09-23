@@ -363,6 +363,7 @@
       toast(I18N.t('dbError'));
     }
     if($('app-version')) $('app-version').textContent='PalmCare v'+App.VERSION;
+    setupVersionCheck();
     setNet();
     try{ Notifier.audit(); }catch(e){}
   }
@@ -375,6 +376,75 @@
     bar.style.gridColumn='1 / -1';
   }
 
-  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.6'};
+  function setupVersionCheck(){
+    const versionBtn=$('btn-force-update');
+    const statusEl=$('update-status');
+    if(!versionBtn) return;
+
+    let currentVersion='unknown';
+
+    // The active service worker announces its version whenever it activates.
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.addEventListener('message',e=>{
+        if(e.data && e.data.type==='sw-version'){
+          currentVersion=e.data.version;
+          localStorage.setItem('palmcare-sw-version',e.data.version);
+          checkLatest();
+        }
+      });
+      if(navigator.serviceWorker.controller){
+        // Ask current controller for its version right now.
+        try{ navigator.serviceWorker.controller.postMessage({type:'get-version'}); }catch(e){}
+      }
+    }
+
+    async function checkLatest(){
+      if(!navigator.onLine) return;
+      let latest='';
+      try{
+        const res=await fetch('./sw.js?t='+Date.now(),{cache:'no-store'});
+        const txt=await res.text();
+        const m=txt.match(/VERSION='([^']+)'/);
+        if(m) latest=m[1];
+      }catch(e){ return; }
+      if(!latest) return;
+
+      const known=currentVersion!=='unknown';
+      if(known && latest===currentVersion){
+        statusEl.textContent=I18N.t('upToDate');
+        versionBtn.hidden=true;
+      } else {
+        statusEl.textContent=I18N.t('updateAvailable',{version:latest});
+        versionBtn.hidden=false;
+      }
+      statusEl.hidden=false;
+      if($('app-version')) $('app-version').textContent='PalmCare v'+App.VERSION+' · SW '+(known?currentVersion:'?')+(known&&latest!==currentVersion?(' → v'+latest):'');
+    }
+
+    versionBtn.addEventListener('click',async()=>{
+      statusEl.hidden=false;
+      statusEl.textContent=I18N.t('checkingUpdate');
+      if('serviceWorker' in navigator){
+        try{
+          const reg=await navigator.serviceWorker.getRegistration();
+          if(reg) await reg.update().catch(()=>{});
+        }catch(e){}
+      }
+      // force-drop any cached app shell so the next load is fresh
+      const keys=await caches.keys().catch(()=>[]);
+      for(const k of keys){
+        if(k.startsWith('palmcare-precache-')) await caches.delete(k).catch(()=>{});
+      }
+      toast(I18N.t('updatedToast'));
+      setTimeout(()=>{ location.reload(); },1200);
+    });
+
+    checkLatest();
+  }
+
+  window.App={init,goto,refreshAll,Home,Farms,lang,applyI18n,NewVisit,showFarmOnMap,VERSION:'0.6',getSWVersion:()=>{
+    const v=localStorage.getItem('palmcare-sw-version');
+    return v||'0.6';
+  }};
   document.addEventListener('DOMContentLoaded',init);
 })();

@@ -39,11 +39,22 @@ self.addEventListener('install',e=>{
   e.waitUntil(caches.open(PRECACHE).then(c=>c.addAll(PRECACHE_URLS)).then(()=>self.skipWaiting()));
 });
 
+self.addEventListener('message',e=>{
+  if(e.data && e.data.type==='get-version'){
+    const client=e.source;
+    if(client) client.postMessage({type:'sw-version',version:VERSION});
+  }
+});
+
 self.addEventListener('activate',e=>{
   e.waitUntil(
     caches.keys().then(keys=>Promise.all(
       keys.filter(k=>k!==PRECACHE && k!==TILES_CACHE).map(k=>caches.delete(k))
     )).then(()=>self.clients.claim())
+      .then(()=>self.clients.matchAll({type:'window',includeUncontrolled:true}))
+      .then(clients=>{
+        clients.forEach(c=>c.postMessage({type:'sw-version',version:VERSION}));
+      })
   );
 });
 
