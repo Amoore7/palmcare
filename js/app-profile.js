@@ -298,6 +298,10 @@ const lines=[];
      _compassCanvas: null,
      _compassCtx: null,
      _arrivedNotified: false,
+     _turnNavigating: false,
+     _turnRoute: null,
+     _turnTarget: null,
+     _turnUpdateTimer: null,
 
      async render(){
       const vv=$('view-map');
@@ -419,6 +423,7 @@ const lines=[];
 selectRouteFarm(farm){
         AreaMap.selectedRouteFarm=farm;
         AreaMap.startNavigation(farm);
+        AreaMap.startTurnByTurn(farm);
         AreaMap.render().catch(()=>{});
       },
       startNavigation(farm){
@@ -436,6 +441,133 @@ selectRouteFarm(farm){
         this._hideNavPanel();
         this._stopNavUpdates();
         this._stopDeviceOrientation();
+        if(this._turnNavigating) this.stopTurnByTurn();
+      },
+      stopTurnByTurn(){
+        this._turnNavigating=false;
+        this._turnTarget=null;
+        this._turnRoute=null;
+        this._hideTurnPanel();
+        this._stopTurnUpdates();
+      },
+      async startTurnByTurn(farm){
+        if(!window.Routing) return;
+        const last=AreaMap._lastLocation;
+        if(!last) return;
+        
+        this._turnNavigating=true;
+        this._turnTarget=farm;
+        this._showTurnPanel();
+        
+        try{
+          const route=await window.Routing.getRoute(farm.id, last, {lat:farm.lat, lng:farm.lng});
+          if(route){
+            this._turnRoute=route;
+            this._renderTurnRoute();
+            this._startTurnUpdates();
+          }
+        }catch(e){
+          console.error('Turn-by-turn failed:', e);
+        }
+      },
+      _showTurnPanel(){
+        const panel=$('#map-turn-panel');
+        const navPanel=$('#map-nav-panel');
+        if(panel){ panel.hidden=false; }
+        if(navPanel){ navPanel.hidden=true; }
+        const inline=$('#map-route-inline');
+        if(inline){ inline.hidden=true; }
+        this._updateTurnPanel();
+      },
+      _hideTurnPanel(){
+        const panel=$('#map-turn-panel');
+        if(panel){ panel.hidden=true; }
+      },
+      _renderTurnRoute(){
+        if(!this._turnRoute || !areaMap) return;
+        const routeLine={
+          points: this._turnRoute.geometry,
+          color: '#0ea5e9',
+          width: 4,
+          dash: []
+        };
+        const currentItems=areaMap.items||{polygons:[],points:[],lines:[]};
+        areaMap.setItems({
+          polygons: currentItems.polygons||[],
+          points: currentItems.points||[],
+          lines: [...(currentItems.lines||[]), routeLine]
+        });
+      },
+      _updateTurnPanel(){
+        if(!this._turnNavigating || !this._turnRoute || !this._turnTarget) return;
+        const last=AreaMap._lastLocation;
+        if(!last) return;
+        
+        const nextInfo=window.Routing.getNextInstruction(
+          this._turnRoute.instructions, 0, this._turnRoute.geometry, last
+        );
+        
+        if(!nextInfo) return;
+        
+        const turnIcon=$('#turn-icon');
+        const turnText=$('#turn-text');
+        const turnDistance=$('#turn-distance');
+        const turnNext=$('#turn-next');
+        const turnProgressBar=$('#turn-progress-bar');
+        
+        const step=nextInfo.current;
+        const lang=I18N.get();
+        const formatted=window.Routing.formatInstruction(step, lang);
+        
+        // Set turn icon based on instruction type
+        const icons={
+          'turn_left': '⬅', 'turn_right': '➡',
+          'turn_sharp_left': '↖', 'turn_sharp_right': '↗',
+          'turn_slight_left': '↖', 'turn_slight_right': '↗',
+          'continue': '⬆', 'arrive': '🎯'
+        };
+        if(turnIcon) turnIcon.textContent=icons[step.type] || '➡';
+        if(turnText) turnText.textContent=formatted;
+        if(turnDistance) turnDistance.textContent=window.Routing.formatInstruction(
+          {instruction: step.distance < 1 ? I18N.t('metersAway',{dist:Math.round(step.distance*1000)}) : I18N.t('kmAway',{dist:step.distance.toFixed(1)})}, lang
+        );
+        if(turnNext && nextInfo.next){
+          turnNext.textContent=I18N.t('nextTurn',{instruction: window.Routing.formatInstruction(nextInfo.next, lang)});
+        }
+        if(turnProgressBar){
+          turnProgressBar.style.width=(nextInfo.progress*100)+'%';
+        }
+        
+        // Check arrived
+        const f=this._turnTarget;
+        const d=Geo.distM(last,f);
+        if(d<=50){
+          this._showTurnArrived();
+        }
+      },
+      _showTurnArrived(){
+        const turnIcon=$('#turn-icon');
+        const turnText=$('#turn-text');
+        if(turnIcon) turnIcon.textContent='🎯';
+        if(turnText) turnText.textContent=I18N.t('arrive');
+        toast(I18N.t('navigateArrived'));
+        setTimeout(()=>this.stopTurnByTurn(),3000);
+      },
+      _startTurnUpdates(){
+        if(this._turnUpdateTimer) clearInterval(this._turnUpdateTimer);
+        this._turnUpdateTimer=setInterval(()=>this._updateTurnPanel(),2000);
+      },
+      _stopTurnUpdates(){
+        if(this._turnUpdateTimer) clearInterval(this._turnUpdateTimer);
+        this._turnUpdateTimer=null;
+      },
+      _hideTurnPanel(){
+        const panel=$('#map-turn-panel');
+        if(panel){ panel.hidden=true; }
+        const navPanel=$('#map-nav-panel');
+        if(navPanel){ navPanel.hidden=false; }
+        const inline=$('#map-route-inline');
+        if(inline){ inline.hidden=false; }
       },
       _showNavPanel(){
         const panel=$('#map-nav-panel');
@@ -611,6 +743,7 @@ $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=
       $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
       $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
       $('#btn-nav-stop').addEventListener('click',()=>{ AreaMap.stopNavigation(); });
+      $('#btn-turn-stop').addEventListener('click',()=>{ AreaMap.stopTurnByTurn(); });
     }
    $('#btn-map-follow').addEventListener('click',()=>{
     if(window.Trail){

@@ -137,6 +137,25 @@
         <span>🎯</span> <span data-i18n="navigateArrived"></span>
       </div>
     </div>
+    <div id="map-turn-panel" class="route-panel" hidden>
+      <div class="turn-panel-header">
+        <h3 data-i18n="turnByTurn"></h3>
+        <button class="iconbtn" id="btn-turn-stop" aria-label="stop navigation">✕</button>
+      </div>
+      <div class="turn-panel-body">
+        <div class="turn-current">
+          <div class="turn-icon" id="turn-icon"></div>
+          <div class="turn-text" id="turn-text"></div>
+        </div>
+        <div class="turn-meta">
+          <div id="turn-distance" class="turn-distance"></div>
+          <div id="turn-next" class="turn-next muted"></div>
+        </div>
+      </div>
+      <div class="turn-progress">
+        <div class="turn-progress-bar" id="turn-progress-bar"></div>
+      </div>
+    </div>
     <div id="map-legend" class="legend card"></div>
   </section>
 
@@ -342,6 +361,7 @@
 <script src="js/i18n.js"></script>
 <script src="js/geo.js"></script>
 <script src="js/db.js"></script>
+<script src="js/routing.js"></script>
 <script src="js/excel.js"></script>
 <script src="js/map.js"></script>
 <script src="js/trail.js"></script>
