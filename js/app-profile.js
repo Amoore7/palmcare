@@ -405,14 +405,24 @@ const lines=[];
          if(!bounded.length){
            leg.appendChild(el('p',{class:'muted small'},[I18N.t('noBoundaries')]));
          } else {
-           bounded.forEach(f=>{
-             const col=colorOf.get(f.id);
-             leg.appendChild(el('button',{class:'legend-row',onclick:()=>{ AreaMap.selectRouteFarm(f); }},[
-               el('span',{class:'dot',style:'background:'+col}),
-               el('span',{},[f.name||'—']),
-               el('b',{},[Geo.fmtArea(Geo.polygonAreaHa(f.boundary.points))+' '+I18N.t('ha')])
-             ]));
-           });
+bounded.forEach(f=>{
+              const col=colorOf.get(f.id);
+              const btn=el('button',{class:'legend-row'},[
+                el('span',{class:'dot',style:'background:'+col}),
+                el('span',{},[f.name||'—']),
+                el('b',{},[Geo.fmtArea(Geo.polygonAreaHa(f.boundary.points))+' '+I18N.t('ha')])
+              ]);
+              // Tap: show guidance line + start button
+              btn.addEventListener('click',()=>{ AreaMap.selectRouteFarm(f); });
+              // Long press: navigate to farm profile
+              btn.addEventListener('contextmenu',e=>{ e.preventDefault(); window.App.goto('farm',f.id); });
+              // Touch long press for mobile
+              let pressTimer=null;
+              btn.addEventListener('touchstart',()=>{ pressTimer=setTimeout(()=>{ window.App.goto('farm',f.id); },600); },{passive:true});
+              btn.addEventListener('touchend',()=>{ if(pressTimer) clearTimeout(pressTimer); });
+              btn.addEventListener('touchmove',()=>{ if(pressTimer) clearTimeout(pressTimer); });
+              leg.appendChild(btn);
+            });
          }
 }
       areaMap.setItems({polygons:polys,points,lines:line.concat(traceLines)});
@@ -423,7 +433,6 @@ const lines=[];
 selectRouteFarm(farm){
         AreaMap.selectedRouteFarm=farm;
         AreaMap.startNavigation(farm);
-        AreaMap.startTurnByTurn(farm);
         AreaMap.render().catch(()=>{});
       },
       startNavigation(farm){
@@ -560,12 +569,16 @@ selectRouteFarm(farm){
         if(navPanel){ navPanel.hidden=false; }
         const inline=$('#map-route-inline');
         if(inline){ inline.hidden=false; }
+        const startBtn=$('#btn-nav-start');
+        if(startBtn){ startBtn.hidden=false; }
       },
       _showNavPanel(){
         const panel=$('#map-nav-panel');
         const inline=$('#map-route-inline');
+        const startBtn=$('#btn-nav-start');
         if(panel){ panel.hidden=false; }
         if(inline){ inline.hidden=true; }
+        if(startBtn){ startBtn.hidden=this._turnNavigating; }
         this._updateNavPanel();
       },
       _hideNavPanel(){
@@ -735,6 +748,7 @@ $('btn-trail-start').addEventListener('click',()=>{ Trail.start(); Trail.follow=
       $('btn-trail-stop').addEventListener('click',()=>{ Trail.stop(); AreaMap.render().catch(()=>{}); });
       $('btn-trail-clear').addEventListener('click',()=>{ Trail.clear(); AreaMap.render().catch(()=>{}); });
       $('#btn-nav-stop').addEventListener('click',()=>{ AreaMap.stopNavigation(); });
+      $('#btn-nav-start').addEventListener('click',()=>{ AreaMap.startTurnByTurn(AreaMap._navTarget); });
       $('#btn-turn-stop').addEventListener('click',()=>{ AreaMap.stopTurnByTurn(); });
     }
    $('#btn-map-follow').addEventListener('click',()=>{
